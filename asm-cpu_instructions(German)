@@ -53,6 +53,12 @@ PUSH:
         Register zu sichern
 POP:
     -nimmt den Wert vom Stack
+    -das oberste Element wird entfernt
+    -wird einem Register zugewiesen
+    -push 7
+     pop ax
+     =ist dasselbe wie=
+     mov ax, 7
 CLI:
     -Clear Interrupt Flag
     -deaktiviert Interrupts

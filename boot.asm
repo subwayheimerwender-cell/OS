@@ -14,7 +14,6 @@ start:
     call key_input
     mov si, booting_msg
     call print_loop
-
     hlt
 
 
@@ -43,7 +42,7 @@ print_loop:
 done_print:
     ret       
 
-os_boot_msg: db 'Press Any Key To Boot...', 0
-booting_msg: db 'Key Pressed. Booting...', 0
+os_boot_msg: db 'Press Any Key To Boot...', 0x0d, 0x0a, 0
+booting_msg: db 0x0d, 0x0a, 'Key Pressed. Booting...', 0
 times 510 - ($ - $$) db 0
 dw 0xAA55            ;v1.0
