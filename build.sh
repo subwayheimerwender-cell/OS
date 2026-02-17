@@ -1,1 +1,6 @@
-nasm -f bin boot.asm -o boot.bin && nasm -f bin kernel.asm -o kernel.bin && dd if=boot.bin of=os-image.bin bs=512 count=2 2>/dev/null && dd if=kernel.bin of=os-image.bin bs=512 seek=2 2>/dev/null && qemu-system-i386 -drive format=raw,file=os-image.bin
+nasm -f bin boot.asm -o boot.bin
+nasm -f bin kernel.asm -o kernel.bin
+dd if=/dev/zero of=disk.img bs=512 count=16
+dd if=boot.bin of=disk.img conv=notrunc
+dd if=kernel.bin of=disk.img bs=512 seek=1 conv=notrunc
+qemu-system-i386 -hda disk.img
