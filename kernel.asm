@@ -37,39 +37,50 @@ shell:
 
 ; ask user for input
     call read_command
+    call print_newline
 
 ; execute the command
     call exec_cmd
     jmp shell
 
+print_newline:
+    mov ah, 0x0e
+    mov al, 0x0d
+    int 0x10
+    mov al, 0x0a
+    int 0x10
+    ret
+
 read_command:
-    mov di, command_buffer
+    mov di, command_buffer  ;SI - Quelle, DI - Ziel
     xor cx, cx
 read_loop:
     mov ah, 0x00
     int 0x16            ;call BIOS write function
     cmp al, 0x0d        ;check if ENTER was pressed
     je read_end
-    cmp al, 0x08        ;
+    cmp al, 0x08        ;0x08 checks if backspace was pressed
     je handle_backspace
-    cmp cx, 255
+    cmp cx, 255         ;zählt wie viel zeichen geschrieben wurden
     jge read_end
     stosb
     mov ah, 0x0e
     mov bl, 0x1f
     int 0x10
-    inc cx
+    inc cx              ;pro zeichen wird cx um 1 erhöht
     jmp read_loop
 
 handle_backspace:
     cmp di, command_buffer
     je read_loop
     dec di
-    dec cx
+    dec cx          ;1 zeichen wird entfernt
     mov ah, 0x0e
-    mov al, 0x08
+    mov al, 0x08    ;0x08 = BACKSPACE
     int 0x10
-    mov al, ' '
+    mov al, ' '     ;Zeichen ist da, aber es wird optisch mit ' ' erstetzt
+    int 0x10        ;leerzeichen überschreibt altes zeichen
+    mov al, 0x08    ;cursor geht noch einmal zurück
     int 0x10
     jmp read_loop
 
@@ -87,6 +98,22 @@ exec_cmd:
     mov di, clear_str
     call compare_str
     je clear
+
+    mov si, command_buffer
+    mov di, ver_str
+    call compare_str
+    je show_ver
+
+    mov si, command_buffer
+    mov di, cyan
+    call compare_str
+    je color_cyan
+
+    mov si, command_buffer
+    mov di, green
+    call compare_str
+    je color_green
+
 
     ; if unknown command
     call unknown_cmd
@@ -107,7 +134,7 @@ equal:
     ret
 help:
     mov si, help_msg
-    call print_loop
+    call print_start
     ret
 clear:
     call clear_screen
@@ -116,23 +143,58 @@ clear_screen:
     mov ax, 0x03
     int 0x10
     ret
+show_ver:
+    mov si, ver_msg
+    call print_start
+    ret
+color_cyan:
+    mov ah, 09h
+    mov cx, 1000h
+    mov bh, 0
+    mov al, 20h
+
+    mov bl, 30h ; 30h = cyan, 20h = blue
+    int 10h
+    mov si, return_msg
+    call print_start
+    call print_newline
+    ret
+color_green:
+    mov ah, 09h
+    mov cx, 1000h
+    mov bh, 0
+    mov al, 20h
+
+    mov bl, 20h ; 30h = cyan, 20h = blue
+    int 10h
+    mov si, return_msg
+    call print_start
+    call print_newline
+    ret
 unknown_cmd:
     mov si, unknown_msg
-    call print_loop
+    call print_start
     ret
 ;================================
 ; Strings and Buffers
 ;================================
 
-welcome_msg: db 'Kernel Loaded Successfully. Type HELP For Help.', 0x0d, 0x0a, 0
+welcome_msg: db 'Kernel Loaded Successfully. Type "help" For Help.', 0x0d, 0x0a, 0
 os_name: db 'Xiromos Bootloader and Kernel v1.0', 0x0d, 0x0a, 0
 
 ;commands
 help_str: db 'help', 0
 clear_str: db 'clear', 0
 
-help_msg: db 'Commands: help(list all commands), clear(clears the screen)', 0x0d, 0x0a, 0
-unknown_msg: db 'Invalid command', 0x0d, 0x0a, 0
+help_msg: db 'Commands: help[lists commands], clear[clear screen], green/cyan[change look]', 0x0D, 0x0A, 0
+unknown_msg: db 'Invalid command', 0x0D, 0x0A, 0
 
-prompt: db '{User$} ', 0
+ver_msg: db 'Xiromos Bootloader and Kernel Testversion', 0x0d, 0x0a, 0
+ver_str: db 'ver', 0
+
+cyan: db 'cyan', 0
+return_msg: db 'To Return Standard Color-Theme Type "clear"', 0
+
+green: db 'green', 0
+prompt: db '> ', 0
 command_buffer db 25 dup(0)
