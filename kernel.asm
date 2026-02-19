@@ -206,7 +206,7 @@ read_loop_load:
     cmp al, 0x0d
     je done_read
     cmp al, 0x08
-    je handle_backspace
+    je r_l_handle_backspace
     cmp cx, 5
     jge read_loop_load
     cmp al, '0'
@@ -215,9 +215,22 @@ read_loop_load:
     ja read_loop_load
     stosb
     mov ah, 0x0e
-    mov bl, 0x04
+    mov bl, 0x1f
     int 0x10
     inc cx
+    jmp read_loop_load
+r_l_handle_backspace:
+    cmp cx, 0
+    je read_loop_load
+    dec di
+    dec cx
+    mov ah, 0x0e
+    mov al, 0x08    ;Backspace
+    int 0x10
+    mov al, ' '
+    int 0x10
+    mov al, 0x08
+    int 0x10
     jmp read_loop_load
 done_read:
     mov byte [di], 0    ; Завершаем строку нулевым символом
@@ -231,7 +244,7 @@ convert_loop:
     lodsb
     cmp al, 0
     je done_convert
-    add al, '0'
+    sub al, '0'         ;add
     imul cx, 10
     add cx, ax
     jmp convert_loop
@@ -240,8 +253,8 @@ done_convert:
     ret
 start_program:
     pusha
-    mov ah, 0x02
-    mov al, 1            ;function to read sector
+    mov ah, 0x02        ;function to read sector
+    mov al, 1            
     mov ch, 0            ;cylinder
     mov dh, 0
     mov cl, [sector_number] ;number of sector
@@ -282,7 +295,7 @@ prompt: db '> ', 0
 load_prompt: db 'Enter sector number: ', 0
 load_str: db 'load', 0
 
-mt db 0x0d, 0x0a, 0
+mt db 13, 10,  0
 
 disk_error_msg: db 'Disk Read Error Occured...', 0x0d, 0x0a, 0
 
