@@ -8,58 +8,58 @@ trap 'printf "${RED}Build failed!${RESET}\n"; exit 1' ERR
 
 nasm -f bin boot.asm -o boot.bin
 nasm -f bin kernel/kernel.asm -o kernel/kernel.bin
-nasm -f bin programs/hwinfo.asm -o programs/hwinfo.bin
-nasm -f bin programs/calc.asm -o programs/calc.bin
-nasm -f bin programs/hello.asm -o programs/hello.bin
-nasm -f bin programs/ascii.asm -o programs/ascii.bin
-nasm -f bin programs/xir.asm -o programs/xir.bin
-nasm -f bin programs/xfetch.asm -o programs/xfetch.bin
-nasm -f bin programs/lsdisk.asm -o programs/lsdisk.bin
-nasm -f bin programs/xedit.asm -o programs/xedit.bin
-nasm -f bin programs/xformat.asm -o programs/xformat.bin
-nasm -f bin programs/help.asm -o programs/help.bin
-nasm -f bin programs/font.asm -o programs/font.bin
-nasm -f bin programs/scancode.asm -o programs/scancode.bin
+nasm -f bin programs/hwinfo.asm -o zprograms/hwinfo.bin
+nasm -f bin programs/calc.asm -o zprograms/calc.bin
+nasm -f bin programs/hello.asm -o zprograms/hello.bin
+nasm -f bin programs/ascii.asm -o zprograms/ascii.bin
+nasm -f bin programs/xir.asm -o zprograms/xir.bin
+nasm -f bin programs/xfetch.asm -o zprograms/xfetch.bin
+nasm -f bin programs/lsdisk.asm -o zprograms/lsdisk.bin
+nasm -f bin programs/xedit.asm -o zprograms/xedit.bin
+nasm -f bin programs/xformat.asm -o zprograms/xformat.bin
+nasm -f bin programs/help.asm -o zprograms/help.bin
+nasm -f bin programs/font.asm -o zprograms/font.bin
+nasm -f bin programs/install.asm -o zprograms/install.bin
+nasm -f bin programs/scancode.asm -o zprograms/scancode.bin
 printf "${GREEN}Succesfully compiled files!${RESET}\n"
-cp programs/ascii.bin zprograms/
-cp programs/calc.bin zprograms/
-cp programs/font.bin zprograms/
-cp programs/hello.bin zprograms/
-cp programs/help.bin zprograms/
-cp programs/hwinfo.bin zprograms/
-cp programs/lsdisk.bin zprograms/
-cp programs/scancode.bin zprograms/
-cp programs/xedit.bin zprograms/
-cp programs/xfetch.bin zprograms/
-cp programs/xformat.bin zprograms/
-cp programs/xir.bin zprograms/
-#rm disk.img
-dd if=/dev/zero of=disk.img bs=1M count=16
+
+# gcc -ffreestanding -nostdlib -c ~/Downloads/xmode/xasm/xasm.c -o ~/Downloads/xmode/xasm/xasm.o        # Only for XMODE
+# ld -T ~/Downloads/xmode/xasm/linker.ld -o ~/Downloads/xmode/xasm/xasm.elf ~/Downloads/xmode/xasm/xasm.o #Only for XMODE
+# objcopy -O binary ~/Downloads/xmode/xasm/xasm.elf ~/Downloads/xmode/xasm/xasm.bin                     # Only for XMODE
+
+# rm disk.img
+# dd if=/dev/zero of=disk.img bs=1M count=9
 mkdosfs -F 16 -v disk.img
 dd if=boot.bin of=disk.img bs=1 count=450 seek=62 skip=62 conv=notrunc
 mcopy -i disk.img kernel/kernel.bin ::KERNEL.BIN
-mcopy -i disk.img programs/help.bin ::HELP.BIN
+# ./buildx.sh                                                                                            # UNCOMMENT FOR XMODE
+# mcopy -i disk.img programs/help.bin ::HELP.BIN
 mcopy -i disk.img txt/ ::TXT
 mcopy -i disk.img zprograms/ ::PROGRAMS
 mcopy -i disk.img -s a ::/
-# mattrib -i disk.img +s ::SYSTEM.TXT
+# mattrib -i disk.img +s ::KERNEL.BIN
+# mattrib -i disk.img +s ::XMODE.BIN
+mcopy -i disk.img txt/fscmds.txt ::TEST.TXT
 printf "${MAGENTA}Disk layout:${RESET}\n"
 mdir -i disk.img ::
 # mdir -i floppy.img ::
 printf "${GREEN}Copied data to disk image. Loading QEMU...${RESET}\n"
-qemu-system-i386 -hda disk.img -hdb disk2.img -fda floppy.img -fdb floppy8.img -m 2M # -hdc disk3.img
+qemu-system-i386 -hda disk.img -hdb disk2.img -fda floppy.img -fdb floppy8.img -m 64M # -d int -no-reboot # -hdc disk3.img -device ahci 
+# qemu-system-i386 \
+#   -drive file=disk.img,format=raw,if=ide,index=0 \
+#   -boot c
 # mkdosfs -F 12 -v disk3.img
 # mkdosfs -F 16 -v disk2.img
 
 # memory map
-# 0x0x0000:0500: root directory
-# 0x0000:0x3999: FAT
-# 0x0000:0x7c00: boot code
-# 0x1000:x0000: kernel.bin
-# 0x5000:0x0000: programs
-# 0xFFFE: kernel stack
-# 0x9000:0x0000: directories
-# 0x9000:0x7c00: boot code of external disks
+# 0x0x0000:0500 - 0x0000:0x3998: root directory
+# 0x0000:0x3999 - 0x0000:0x7bff: FAT
+# 0x0000:0x7c00 - 0x0000:0x7e00: boot code
+# 0x1000:0x0000 - 0x1000:0xffa0: kernel.bin
+# 0x1000:0xfffe - 0x1000:0xffa1: kernel stack
+# 0x5000:0x0000 - 0x8000:0x0000: programs
+# 0x9000:0x0000 - 0x9000:0x7bff: directories
+# 0x9000:0x7c00 - 0x9000:0x7e00: boot code of external disks
 
 # write on USB stick:
 # lsblk
