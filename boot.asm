@@ -82,8 +82,6 @@ main:
     mov [RootStartSec], ax
     mov [dap+0x08], ax
     mov word [dap+10], 0
-    mov word [dap+12], 0
-    mov word [dap+14], 0
 
     ;calculate data start sector
     xor ax, ax
@@ -128,8 +126,6 @@ load_root:
 search_kernel:
     mov cx, 11               ;length of file name, needed for 'rep'
     mov si, file_kernel_bin  ;ds:si = name
-    ;cmp byte [es:di], 0
-    ;je error
     push di
     repe cmpsb                ;compare DS:SI with ES:DI
     pop di
@@ -169,8 +165,6 @@ kernel_loop:
     mov ax, word [cluster]
     call cluster_to_sec         ;get the first sector of the cluster
     mov word [dap+0x08], ax          ;ax = first sector of cluster in data area
-    ;mov word [dap+10], 0
-    ;mov dword [dap+12], 0
     xor bx, bx
     mov bl, [BPB_SectorsPerCluster]        
     mov [dap+0x02], bx           ;number of sectors to read
@@ -178,12 +172,14 @@ kernel_loop:
     mov dword [dap+12], 0
     mov si, dap
     call read_sectors           ;load the cluster into memory
-    mov cl, [BPB_SectorsPerCluster]
+    movzx cx, byte [BPB_SectorsPerCluster]
     mov ax, 512
-    mul cl
+    mul cx
     add [dap+0x04], ax
-    add word [dap+0x06], 0x80   ; 0x80 * 16 = 0x800 = 2048 bytes (one cluster)
+    jnc .no_overflow
+    add word [dap+0x06], 0x1000
 
+.no_overflow:
     mov bx, [cluster]
     shl bx, 1                   ;cluster * 2
     mov ax, [0x3999+bx]         
@@ -195,11 +191,9 @@ kernel_loop:
 loaded:
     mov si, ok_msg
     call print_start
-    mov al, [BS_DriveNumber]
-    mov [0x7e00], al
-    mov al, [BPB_SectorsPerCluster]
-    mov [0x7e00+1], al
-    mov ax, [BPB_RootEntry]
+    mov ax, [RootDirSectors]
+    mov [0x7e00], ax
+    mov ax, [RootStartSec]
     mov [0x7e00+2], ax
     mov ax, [DataStartSector]
     mov [0x7e00+4], ax
