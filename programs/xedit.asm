@@ -20,6 +20,8 @@ print_header:
     mov bl, 0x0b
     call print_start
     mov di, text_buffer
+    mov es, di
+    xor di,di
 
 ;----------writing---------
 write_loop:
@@ -37,9 +39,11 @@ save_buffer:
     cmp di, [text_max]
     je max_text_written
     stosb
+    inc word [file_size]
     jmp write_loop
 handle_backspace:
     pop bx
+    mov [di], 0
     dec di
     cmp [column], 0
     je go_up
@@ -47,11 +51,14 @@ handle_backspace:
     mov ah, 0x0e
     mov al, 0x08    ;go one space back
     int 0x10
+    stosb
     mov al, ' '     ;replace the char with space
-    int 0x10        
+    int 0x10
+    stosb        
     mov al, 0x08    ;go another space back
     int 0x10
     stosb
+    dec word [file_size]
     jmp write_loop
 
 compare_chars:
@@ -87,6 +94,8 @@ new_line:
     int 0x10
     mov al, 0x0d
     int 0x10
+    inc word [file_size]
+    inc word [file_size]
     ret
 tab:
     call delete_cursor
@@ -95,6 +104,7 @@ tab_loop:
     mov ah, 0x0e
     mov al, ' '
     int 0x10
+    inc word [file_size]
     loop tab_loop
     ret
 ;-------------------------
@@ -156,6 +166,7 @@ move_down:
     mov ah, 0x0e
     mov al, 0x0a
     int 0x10
+    inc word [file_size]
     jmp save_buffer
 move_left:
     pop ax
@@ -163,6 +174,7 @@ move_left:
     mov ah, 0x0e
     mov al, 0x08
     int 0x10
+    inc word [file_size]
     jmp save_buffer
 move_right:
     call delete_cursor
@@ -213,23 +225,30 @@ open_file:
     mov ah, 0x01
     mov si, outputfile_buffer
     mov di, text_buffer
+    mov es, di
+    xor di, di
     int 0x23
 
     mov si, text_buffer
     mov bl, 0x0f
-    call print_start
-    cmp cx, 0x67
-    je max_text_written
+    call print_buffer
     jmp write_loop
 
 save_file:
     pop bx
 
+    xor di, di
     mov si, file_test_txt
-    mov di, text_buffer
-    mov cx, 512
+    mov cx, [file_size]
+    mov bx, es
     mov ah, 0x02
     int 0x23
+    jc .error
+    jmp write_loop
+.error:
+    mov si, error_msg
+    mov bl, 0x0c
+    call print_start
     jmp write_loop
 max_text_written:
     mov si, max_text_msg
@@ -241,6 +260,18 @@ clear_buffer:
     mov di, outputfile_buffer
     mov cx, 11
     rep stosb
+    ret
+print_buffer:
+    mov di, text_buffer
+    mov es, di
+    xor di, di
+.loop:
+    mov si, es:di
+    lodsb
+    mov ah, 0x0e
+    int 0x10
+    inc di
+    loop .loop
     ret
 ;---------other functions---------
 print_start:
@@ -326,8 +357,10 @@ enter_filename: db 'Enter the filename you want to open: ', 0
 line db 2
 column db 0
 curs_char db 0
-text_buffer dw 0xb000
-text_max dw 0xbf00
+text_buffer dw 0xe000
+text_max dw 0xffff
 inputfile_buffer: db 0 dup(12)
 outputfile_buffer: db 0 dup(11)
 file_test_txt db "TEST    TXT"
+error_msg: db 'Something went wrong while saving data', 0
+file_size: dw 0
