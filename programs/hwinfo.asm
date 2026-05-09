@@ -341,7 +341,7 @@ ext_mem_kb dw 0
 k_str: db ' KB', 0
 M_str: db ' MB', 0
 
-hdd_label: db 'Number Of Harddrives: ', 0
+hdd_label: db 'Number of Harddrives: ', 0
 
 cpu_vendor_label: db 'CPU Vendor: ', 0
 cpu_desc_label: db 'CPU Description: ', 0
