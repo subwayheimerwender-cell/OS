@@ -7,18 +7,6 @@ bits 16
 [org 0x0000]
 
 start:
-    ;read boot info from 0x7e00 (segment 0)
-    ;mov al, [0x7e00]
-    ;mov [drive_number], 0x80
-    ;mov al, [0x7e00+1]
-    ;mov [sec_per_cluster], 4
-    ;mov ax, [0x7e00+2]
-    ;mov [root_entries], word 512
-    ;mov ax, [0x7e00+4]
-    ;mov [data_start_sec], word 65
-    ;mov ax, [0x7e00+22]
-    ;mov [fat_size], ax
-
     call load_interrupts
     
     cli
@@ -49,6 +37,8 @@ start:
     call print_string_green
     call print_newline
     call print_newline
+
+    call check_xmode_start
 
     call print_blocks
 
@@ -82,7 +72,7 @@ set_video_mode:
     int 0x10
     ret
 ;===========================COLORED STRINGS===========================
-
+;output functions - made by ProX2011
 ;--cyan--
 print_string_cyan:
     mov ah, 0x0e
@@ -116,6 +106,7 @@ print_char:
 print_char_done:
     ret
 print_hex:
+    pusha
     mov cx, 2       ;counter to print 4 chars !!!!change it to print less or more chars!!!!
 char_loop:
     dec cx
@@ -141,6 +132,7 @@ set_letter:
 print_hex_done:
     mov bx, hex_out
     call print_hex_string
+    popa
     ret
 print_hex_string:
     mov al, [si]
@@ -152,6 +144,36 @@ print_hex_string:
     add si, 1       ;shift bx to the next character
     jmp print_hex_string
 hex_string_done:
+    ret
+
+print_hex4:
+    pusha
+    mov cx, 4       ;counter to print 4 chars !!!!change it to print less or more chars!!!!
+.char_loop:
+    dec cx
+
+    mov ax, dx      ;copy dx
+    shr dx, 4       ;shift 4 bits to the right
+    and ax, 0xf     ;mask ah to get the last 4 bits
+
+    mov si, hex4_out;memory adress of the string
+    add si, 2       ;skip the 0x
+    add si, cx      ;add counter to adress
+
+    cmp ax, 0xa     ;checkk if its a letter or a number
+    jl .set_letter   ;if its a number, go to set the value
+    add al, 0x27    ;ASCII letters start at 0x61 for 'a'
+    jl .set_letter
+.set_letter:
+    add al, 0x30    ;ASCII number
+    mov byte [si], al   ;add the value of the char at bx
+    cmp cx, 0       ;check the counter
+    je .print_hex_done
+    jmp .char_loop
+.print_hex_done:
+    mov bx, hex4_out
+    call print_hex_string
+    popa
     ret
 ;===============================================================
 
@@ -235,15 +257,12 @@ print_blocks:
     call print_newline
     ret
 shell:
-    ;mov si, prompt_front
-    ;call print_string_white
+    cmp byte [debug_mode], 1
+    jne .continue
 
-    ;mov si, username
-    ;call print_string_cyan
-
-    ;mov si, prompt_back
-    ;call print_string_white
-
+    mov si, debug_prompt
+    call print_string_darkred
+.continue:
     mov si, prompt
     call print_string_white
 
@@ -363,6 +382,11 @@ show_ver:
     call print_string_cyan
     call print_newline
     ret
+exit_bios:
+    mov ax, 0x12
+    int 0x10
+    int 0x18
+    ret
 unknown_cmd:
     mov si, unknown_msg
     call print_string_red
@@ -395,9 +419,22 @@ print_k_suffix:
     call print_newline
     popa
     ret
+
+change_debug_mode:
+    mov [debug_mode], byte 1
+    mov si, debug_success
+    call print_string_darkred
+    call print_newline
+    ret
+end_debug:
+    mov [debug_mode], byte 0
+    mov si, debugend_success
+    call print_string_darkred
+    call print_newline
+    ret
 reboot:
-    ;jmp far 0xffff:0x0000
-    int 0x19
+    jmp far 0xffff:0x0000
+    ;int 0x19
 
     ;mov al, 0xfe   ;hard reset
     ;out 0x64, al
@@ -427,6 +464,8 @@ rsod:
     call print_newline
     mov si, rsod_link
     call print_string_white
+    xor ah, ah
+    int 0x16
     xor ah, ah
     int 0x16
     int 0x19
@@ -496,6 +535,154 @@ list_drives:
     call print_decimal
     call print_newline
     ret
+
+print_stack:
+    cmp byte [debug_mode], 1
+    jne .no_debug
+
+    mov si, stackpointer_str
+    call print_string_white
+    mov si, prefix_0x
+    call print_string_cyan
+    mov dx, sp
+    call print_hex4
+    call print_newline
+
+    mov si, stacksegment_str
+    call print_string_white
+    mov si, prefix_0x
+    call print_string_cyan
+    mov dx, ss
+    call print_hex4
+    call print_newline
+    ret
+.no_debug:
+    mov si, programnotfound_str
+    call print_string_red
+    call print_newline
+    ret
+clear_stack:
+    cmp byte [debug_mode], 1
+    jne print_stack.no_debug
+
+    mov sp, word 0
+    mov si, clear_stack_success
+    call print_string_green
+    call print_newline
+    jmp shell
+print_disk_variables:
+    cmp byte [debug_mode], 1
+    jne print_stack.no_debug
+
+    mov si, sec_per_cluster_str
+    call print_string_white
+    xor ax, ax
+    mov al, [sec_per_cluster]
+    mov bh, 0x01
+    int 0x27
+    call print_newline
+
+    mov si, data_start_str
+    call print_string_white
+    mov ax, [data_start_sec]
+    mov bh, 0x01
+    int 0x27
+    call print_newline
+
+    mov si, root_start_str
+    call print_string_white
+    mov ax, [root_start_sec]
+    mov bh, 0x01
+    int 0x27
+    call print_newline
+
+    mov si, root_size_str
+    call print_string_white
+    mov ax, [root_size]
+    mov bh, 0x01
+    int 0x27
+    call print_newline
+
+    mov si, root_entry_str
+    call print_string_white
+    mov ax, [root_entries]
+    mov bh, 0x01
+    int 0x27
+    call print_newline
+
+    mov si, fat_size_str
+    call print_string_white
+    mov ax, [fat_size]
+    mov bh, 0x01
+    int 0x27
+    call print_newline
+
+    mov si, reserved_sectors_str
+    call print_string_white
+    mov ax, [reserved_sectors]
+    mov bh, 0x01
+    int 0x27
+    call print_newline
+
+    mov si, sec_per_track_str
+    call print_string_white
+    mov ax, [sec_per_track]
+    mov bh, 0x01
+    int 0x27
+    call print_newline
+
+    mov si, num_of_heads_str
+    call print_string_white
+    mov ax, [num_heads]
+    mov bh, 0x01
+    int 0x27
+    call print_newline
+    ret
+save_proccess:
+    mov bl, [current_proccess]
+    xor bh, bh
+    shl bx, 3
+
+    mov [pcb+bx], sp
+    mov [pcb+bx+2], ss
+    ;mov [pcb+bx+4], ip
+    ;mov [pcb+bx+6], cs
+    ret
+scheduler:
+
+    inc byte [current_proccess]
+    mov al, [proccess_count]
+    cmp byte [current_proccess], al
+    ja .reset_procs
+    jmp .continue
+.reset_procs:
+    mov byte [current_proccess], 0
+.continue:
+    ret
+
+load_proccess:
+    xor bx, bx
+    mov bl, [current_proccess]
+    shl bx, 3
+
+    cli
+    mov ax, [pcb+bx+2]
+    mov ss, ax
+    mov sp, [pcb+bx]
+    sti
+    ; mov ax, [pcb+bx+4]
+    ; mov ip, ax
+    ; mov ax, [pcb+bx+6]
+    ; mov cs, ax
+    ret
+
+    pop es
+    pop ds
+    popa
+
+    mov al, 0x20
+    out 0x20, al
+    iret
 ;====================username====================
 read_username:
     mov byte [first_boot_value], 0

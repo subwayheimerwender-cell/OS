@@ -147,6 +147,36 @@ exec_cmd:
     call compare_str
     jc shutdown
 
+    mov si, command_buffer
+    mov di, exit_str
+    call compare_str
+    jc exit_bios
+
+    mov si, command_buffer
+    mov di, debug_str
+    call compare_str
+    jc change_debug_mode
+
+    mov si, command_buffer
+    mov di, debug_end_str
+    call compare_str
+    jc end_debug
+
+    mov si, command_buffer
+    mov di, print_stack_str
+    call compare_str
+    jc print_stack
+
+    mov si, command_buffer
+    mov di, clear_stack_str
+    call compare_str
+    jc clear_stack
+
+    mov si, command_buffer
+    mov di, disk_str
+    call compare_str
+    jc print_disk_variables
+
     cmp byte [command_buffer], 0x00
     je return_shell
 

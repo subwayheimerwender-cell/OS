@@ -85,12 +85,23 @@ write_file:
     call clear_buffer
     call parse_arg
     mov si, read_buffer
+    push si
+    add si, 8
+    mov di, bin_ext
+    repe cmpsb
+    pop si
+    je .bin_file
 
     cmp byte [drive_number], 0x80
     jb write_file_flp
 
     mov ah, 0x02
     int 0x22
+    ret
+.bin_file:
+    mov si, no_ext_str
+    call print_string_red
+    call print_newline
     ret
 write_file_flp:
     cmp byte [fat8], 1
@@ -163,18 +174,32 @@ delete_file_flp8:
     int 0x30
     ret
 get_bpb_data:
-    mov al, [0x7e00]
-    mov [drive_number], 0x80
-    mov al, [0x7e00+1]
-    mov [sec_per_cluster], byte 4
-    mov ax, [0x7e00+2]
-    mov [root_entries], word 512
-    mov ax, [0x7e00+4]
-    mov [data_start_sec], word 100
-    mov [fat_size], word 32
-    mov [reserved_sectors], word 4
-    mov [root_start_sec], word 68
-    mov [root_size], word 32
+    xor ax, ax
+    mov es, ax
+    mov di, 0x7c00
+    mov al, [es:di+36]
+    mov [drive_number], al
+    mov al, [es:di+13]
+    mov [sec_per_cluster], al
+    mov ax, [es:di+17]
+    mov [root_entries], ax
+    mov ax, [es:0x7e00+4]
+    mov [data_start_sec], ax      ;100
+    mov ax, [es:di+22]
+    mov [fat_size], ax       ;32
+    mov ax, [es:di+14]
+    mov [reserved_sectors], ax      ;4
+    mov ax, [es:0x7e00+2]
+    mov [root_start_sec], ax       ;68
+    mov ax, [es:0x7e00]
+    mov [root_size], ax        ;32
+    mov ax, [es:di+24]
+    mov [sec_per_track], ax
+    mov ax, [es:di+26]
+    mov [num_heads], ax
+
+    mov ax, kernel_seg
+    mov es, ax
     ret
 cd_drives:
     ;mov si, change_drive_str
@@ -209,10 +234,12 @@ pwd:
     call print_newline
     ret
 clear_buffer:
+    pusha
     mov al, ' '
     mov di, read_buffer
     mov cx, 11
     rep stosb
+    popa
     ret
 parse_arg:
     xor cx, cx
@@ -333,6 +360,14 @@ make_dir:
     call clear_buffer
     call parse_arg
 
+    cmp byte [drive_number], 0x80
+    jb make_dir_flp
+
+    mov si, read_buffer
+    mov ah, 0x0b
+    int 0x22
+    ret
+make_dir_flp:
     mov si, read_buffer
     mov ah, 0x0a
     int 0x24
@@ -345,4 +380,32 @@ delete_dir:
     mov si, read_buffer
     mov ah, 0x0b
     int 0x24
+    ret
+
+check_xmode_start:
+    mov ax, 0x9000
+    mov es, ax
+    xor di, di
+    mov si, file_xmode_sys
+    mov di, dir_sys
+    call load_search_dir
+    jc .done
+
+    mov ax, 0x8000
+    mov es, ax
+    xor di, di
+    mov al, [es:di]
+    cmp al, byte '1'
+    jne .ret
+    mov si, xmode_str
+    int 0x20
+.ret:
+    mov ax, kernel_seg
+    mov es, ax
+    ret
+.done:
+    mov ah, 0x0e
+    mov al, '#'
+    mov bl, 0x0a
+    int 0x10
     ret

@@ -41,6 +41,7 @@ arg_buffer: db 12 dup(0)
 
 ok_msg: db '[ OK ]', 0
 hex_out: db '0x00', 0
+hex4_out: db '0x0000', 0
 zero_zero: db '00', 0
 kernel_seg_str: db 'Kernel Segment: ', 0
 kernel_seg equ 0x1000
@@ -48,6 +49,7 @@ kernel_off equ 0x0000
 fat_offset equ 0x3999
 dir_seg    equ 0x9000
 prog_seg   equ 0x5000
+max_procs  equ 4
 a20_seg: dw 0
 ;commands
 help_str: db 'help', 0
@@ -71,6 +73,12 @@ cd_str: db 'cd', 0
 mkdir_str: db 'mkdir', 0
 deldir_str: db 'deldir', 0
 shutdown_str: db 'shutdown', 0
+exit_str: db 'exit', 0
+debug_str: db 'debug', 0
+debug_end_str: db 'debug-end', 0
+print_stack_str: db 'stack', 0
+clear_stack_str: db 'clear-stack', 0
+disk_str: db 'disk', 0
 unknown_msg: db 'No Command or Program found', 0
 ;programs
 hwinfo_str: db 'hwinfo', 0
@@ -116,6 +124,12 @@ base_mem_kb dw 0
 mem_base_str: db 'Base Memory: ', 0
 first_boot_value: db 0
 username_set: db 0
+;interrupts
+int8_off: dw 0
+int8_seg: dw 0
+int9_addr:
+    dw 0
+    dw 0
 ;filenames
 file_kernel_bin    db "KERNEL  BIN"
 program_hwinfo_bin db "HWINFO  BIN"
@@ -129,14 +143,16 @@ program_help_bin: db "HELP    BIN"
 dir_programs db "PROGRAMS   "
 fat8_str db "FAT8    "
 dot_str db ".          "
+dot_dot db "..         "
+bin_ext db "BIN"
+xmode_str db "XMODE   BIN"
+file_xmode_sys db "AUTOSTRTSYS"
+dir_sys db "SYS        "
 ;red screen of death
 rsod_header: db 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB1, 0xB1, 0xB1, 0xB1, 0xB1, 0xB1, 0xB1, 0xB1, 0xB2, 0xB2, 0xB2, 0xB2, 0xB2, 0xB2, 0xDB, 0xDB, ' ','System Error', ' ', 0xDB, 0xDB, 0xB2, 0xB2, 0xB2, 0xB2, 0xB2, 0xB2, 0xB1, 0xB1, 0xB1, 0xB1, 0xB1, 0xB1, 0xB1, 0xB1, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0
 rsod_str: db '      :(', 0
 rsod_msg: db '      Your system ran into a serious problem. Press any key to reboot...', 0
 rsod_link: db '         ', 0xaf, ' More Information: https://github.com/xiromos/Xiromos', 0
-int9_addr:
-    dw 0
-    dw 0
 ;filesystem
 root_entries: dw 0
 program_cluster: dw 0
@@ -202,6 +218,7 @@ invalid_rename: db 'Cant rename or delete KERNEL.BIN', 0
 delete_success: db 'File deleted successfully!', 0
 sys_file_str: db 'This file is a system file. You cant delete it', 0
 kernel_exec_err: db 'Cant execute kernel file', 0
+no_file_msg: db '--Nothing to display--', 0
 ;external drives
 external_drives_str: db 'External Drives: ', 0
 external_floppies_str: db 'External Floppies: ', 0
@@ -215,6 +232,7 @@ get_bpb_ok: db 'Successfully changed to root disk', 0
 disk_loaded_msg: db 'Disk changed successfully. To return, type "cdisk C"', 0
 no_ext_str: db 'Invalid extension', 0
 buffer_adress: dw 0
+buffer_segment: dw 0
 ;floppy
 flp_error_msg: db 'Error while reading floppy disk', 0
 floppy_read_success: db 'Successfully switched to floppy disk', 0
@@ -237,3 +255,58 @@ dot_dot_str: db '..'
 no_dot_str: db 'Dot Entry not found', 0
 dir_str: db '<dir>', 0
 read_dir_str: db 'This is a directory', 0
+dir_not_empty: db 'This directory is not empty', 0
+;debug
+debug_mode: db 0
+debug_prompt: db '{Debug} ', 0
+debug_success: db 'Debug mode active', 0
+debugend_success: db 'Debug mode disabled', 0
+
+stackpointer_str: db 'Stack Pointer: ', 0
+stacksegment_str: db 'Stack Segment: ', 0
+clear_stack_success: db 'Stack cleared successfully', 0
+sec_per_cluster_str: db 'Sectors per cluster: ', 0
+data_start_str: db 'Data start sector: ', 0
+root_start_str: db 'Root start sector: ', 0
+root_size_str: db 'Size of root dir: ', 0
+root_entry_str: db 'Root entries: ', 0
+fat_size_str: db 'Size of FAT: ', 0
+reserved_sectors_str: db 'Reserved sectors: ', 0
+sec_per_track_str: db 'Sectors per track: ', 0
+num_of_heads_str: db 'Number of heads: ', 0
+;multi-task
+current_proccess: db 0
+proccess_count: db 0
+;0 = 0x1000:0x0000 - stack: 0x1000:0xFFFF
+;1 = 0x5000:0x0000 - stack: 0x5000:0xFFFF
+;2 = 0x6000:0x0000 - stack: 0x6000:0xFFFF
+;3 = 0x7000:0x0000 - stack: 0x7000:0xFFFF
+;4 = 0x8000:0x0000 - stack: 0x8000:0xFFFF
+
+pcb:
+    dw 0         ;sp
+    dw 0x1000    ;ss
+    dw 0         ;active / inactive - 0 or 1
+    dw 0         ;cs
+
+    dw 0         ;sp
+    dw 0x5000    ;ss
+    dw 0         ;active / inactive
+    dw 0         ;cs
+
+    dw 0         ;sp
+    dw 0x6000    ;ss
+    dw 0         ;active / inactive
+    dw 0         ;cs
+
+    dw 0         ;sp
+    dw 0x7000    ;ss
+    dw 0         ;active / inactive
+    dw 0         ;cs
+
+    dw 0         ;sp
+    dw 0x8000    ;ss
+    dw 0         ;active / inactive
+    dw 0         ;cs
+
+max_proccess: db 'Too many proccesses', 0
