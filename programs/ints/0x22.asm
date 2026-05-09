@@ -73,26 +73,30 @@ load_file_loop:
     mov bl, [sec_per_cluster]
     mov [program_dap+2], bl                 ;number of sectors to read
     mov word [program_dap+10], 0            ;fill the rest of the LBA field with zeros
-    mov word [program_dap+12], 0
-    mov word [program_dap+14], 0
     mov si, program_dap
     call read_sectors
 
+    xor cx, cx
     mov cl, [sec_per_cluster]
     mov ax, 512                                 ;standard size of cluster in FAT16
-    mul cl
+    mul cx
     add [program_dap+4], ax                     ;add one cluster to the memory adress
     adc word [program_dap+6], 0                ;increase buffer for next cluster
     mov bx, [program_cluster]                   ;get the cluster-number
-    shl bx, 1                                   ;fat entry is 16bit
+    shl bx, 1                                   ;calculate offset
+
+    xor dx, dx
+    mov ds, dx
     mov ax, [0x3999+bx]                         ;read the value for the next cluster number
+    mov dx, kernel_seg
+    mov ds, dx
     mov [program_cluster], ax                   ;save the value for next cluster
-;------NOT WORKING------
-    ;cmp ax, 2
-    ;jb invalid_cluster
-    ;cmp ax, 0xFFF8                              ;check if its the last cluster
-    ;jb load_file_loop
-;-----------------------
+
+    cmp ax, 2
+    jb invalid_cluster
+    cmp ax, 0xFFF8                              ;check if its the last cluster
+    jb load_file_loop
+
     mov si, file_found_str
     call print_string_green
     call print_newline
@@ -103,7 +107,16 @@ print_file_start:
     mov ax, 0x8000
     mov ds, ax
     mov cx, [es:di+0x1c]
+    cmp cx, word 0
+    je .empty_file
     call print_file_loop_start
+    jmp read_file_done
+.empty_file:
+    mov ax, kernel_seg
+    mov ds, ax
+    mov es, ax
+    mov si, no_file_msg
+    call print_string_red
     jmp read_file_done
 print_file_loop_start:
     mov si, 0x0000
@@ -359,9 +372,6 @@ write_root:
     mov [file_dap+0x06], word 0x0000
     mov ax, [root_start_sec]
     mov [file_dap+0x08], ax
-    mov [file_dap+0x0a], word 0
-    mov [file_dap+0x0c], word 0
-    mov [file_dap+0x0e], word 0
     mov dl, [drive_number]
     mov si, file_dap
     mov ah, 0x43
@@ -520,10 +530,23 @@ file_list_loop:
 .print_cluster:
     mov cx, 12
     call print_spaces
+
+    cmp byte [debug_mode], 1
+    jne .continue
     mov si, first_cluster_str
     call print_string_white
     mov ax, [first_cluster]
     call print_decimal
+    
+    mov cx, 5
+    call print_spaces
+    mov si, prefix_0x
+    call print_string_cyan
+    mov al, [es:di+0xb]
+    xor dx, dx
+    mov dl, al
+    call print_hex
+.continue:
     call print_newline
 empty_entry:
     add di, 32
@@ -599,10 +622,22 @@ list_subdir_loop:
 .print_cluster:
     mov cx, 12
     call print_spaces
+    cmp byte [debug_mode], 1
+    jne .continue
+
     mov si, first_cluster_str
     call print_string_white
     mov ax, [first_cluster]
     call print_decimal
+    mov cx, 5
+    call print_spaces
+    mov si, prefix_0x
+    call print_string_cyan
+    mov al, [es:di+0xb]
+    xor dx, dx
+    mov dl, al
+    call print_hex
+.continue:
     call print_newline
 .empty_entry:
     add di, 32
@@ -712,8 +747,11 @@ search_filename_loop:
 delete_object:
     cmp byte [es:di+0xb], 0x04
     je del_system_file
-    mov byte [es:di], 0xe5      ;deleted file marker
+    cmp byte [es:di+0xb], 0x10
+    je delete_directory
 
+.empty_dir:
+    mov byte [es:di], 0xe5      ;deleted file marker:
     cmp byte [sub_dir], 1
     je .write_subdir
     jmp .write_root
@@ -809,6 +847,7 @@ current_disk:
     mov si, get_bpb_ok
     call print_string_green
     call print_newline
+    mov [sub_dir], byte 0
     iret
 check_floppies:
     mov ah, 0x01        ;drive number in DI
@@ -902,9 +941,6 @@ get_external_bpb:
     mov [file_dap+0x06], word 0x0000
     mov ax, [reserved_sectors]
     mov [file_dap+0x08], ax
-    mov [file_dap+0xa], word 0
-    mov [file_dap+0xc], word 0
-    mov [file_dap+0xe], word 0
 
     mov ah, 0x42
     mov si, file_dap
@@ -915,9 +951,17 @@ get_external_bpb:
 disk_loaded:
     mov ax, kernel_seg
     mov es, ax
+    mov ds, ax
     mov si, disk_loaded_msg
     call print_string_green
     call print_newline
+    ; xor ax, ax
+    ; mov es, ax
+    ; mov dx, [es:0x09*4]
+    ; call print_hex4
+    ; call print_newline
+    ; mov dx, [es:0x09*4+2]
+    ; call print_hex4
     mov [current_dir], word 0
     mov [parent_dir], word 0
     mov [sub_dir], byte 0
@@ -1150,6 +1194,281 @@ cd_parent_dir:
     cmp ax, 0xfff8
     jb .load_dir
 .done:
+    mov ax, kernel_seg
+    mov es, ax
+    iret
+
+make_directory:
+    call dir_search_free_root
+    push si
+    call dir_search_fat
+    pop si
+    call write_dir_entry
+    call dir_write_dot
+    call write_fat
+
+    cmp byte [sub_dir], 1
+    jne .continue
+
+    call write_subdir
+    jmp .end
+.continue:
+    call write_root
+.end:
+    mov ax, kernel_seg
+    mov es, ax
+    mov si, dir_success
+    call print_string_green
+    call print_newline
+    iret
+
+dir_search_free_root:
+    cmp byte [sub_dir], 1
+    je .sub_dir
+
+    xor di, di
+    mov es, di
+    mov di, 0x500
+    mov dx, [root_entries]
+    jmp .search
+.sub_dir:
+    mov di, dir_seg
+    mov es, di
+    xor di, di
+    mov dx, 512
+.search:
+    mov al, [es:di]
+    cmp al, 0x00
+    je .free_entry
+    cmp al, 0xe5
+    je .free_entry
+
+    add di, 32
+    dec dx
+    jnz .search
+
+    pop bx
+    mov si, no_entries
+    call print_string_red
+    call print_newline
+    mov ax, kernel_seg
+    mov es, ax
+    iret
+.free_entry:
+    ret
+dir_search_fat:
+    mov bx, 2       ;reserved cluster (0 and 1)
+    xor ax, ax
+    mov ds, ax
+.search_fat:
+    mov si, fat_offset
+    mov ax, bx
+    shl ax, 1
+    add si, ax
+    mov dx, [si]
+    cmp dx, 0x0000        ;the entries are 2byte arrays
+    je .free_cluster       ;0x0000 = free entry
+    inc bx
+    jmp .search_fat
+.free_cluster:
+    ;bx = first cluster
+    mov ax, 0xfff8        ;end of cluster marker
+    mov dx, bx
+    shl dx, 1             ;same as dx * 2
+    mov si, fat_offset        ;adress of the FAT
+    add si, dx            ;add the FAT adress our cluster number
+    mov [si], ax          ;mark this FAT adress as reserved
+    mov ax, kernel_seg
+    mov ds, ax
+    mov [fat_cluster], bx
+    ret
+
+write_dir_entry:
+    cmp byte [sub_dir], 1
+    je .subdir
+
+    xor ax, ax
+    mov es, ax
+    jmp .write_entry
+.subdir:
+    mov ax, dir_seg
+    mov es, ax
+.write_entry:
+    mov cx, 11
+    push di
+    rep movsb
+    pop di
+
+    mov byte [es:di+0xb], 0x10
+    mov bx, [fat_cluster]
+    mov [es:di+0x1a], bx
+    mov [es:di+0x1c], 0
+
+    mov ax, kernel_seg
+    mov es, ax
+    ret
+
+dir_write_dot:
+    mov ax, 0x9000
+    mov es, ax
+    mov di, 0x5000
+    mov dx, 512
+
+    xor ax, ax
+    mov al, [sec_per_cluster]
+    mov cx, 512
+    mul cx
+    mov cx, ax
+
+    xor al, al
+    rep stosb
+    mov di, 0x5000
+
+
+    mov si, dot_str
+    mov cx, 11
+    push di
+    rep movsb
+    pop di
+
+    mov ax, [fat_cluster]
+    mov [es:di+0x1a], ax
+    mov [current_dir], ax
+    mov byte [es:di+0xb], 0x10
+    mov [es:di+0x1c], word 0
+    add di, 32
+
+.write_dot_dot:
+    mov si, dot_dot
+    mov cx, 11
+    push di
+    rep movsb
+    pop di
+
+    cmp byte [sub_dir], 1
+    jne .continue
+    call get_parent_dir
+.continue:
+    mov bx, [parent_dir]
+    mov [es:di+0x1a], bx
+    mov [es:di+0xb], 0x10
+    mov [es:di+0x1c], word 0
+
+    mov ax, [fat_cluster]
+    call cluster_to_sec
+    mov [file_dap+8], ax
+    mov [file_dap+6], word 0x9000
+    mov [file_dap+4], word 0x5000
+    xor ax, ax
+    mov al, [sec_per_cluster]
+    mov [file_dap+2], ax
+    mov si, file_dap
+    mov dl, [drive_number]
+    mov ah, 0x43
+    int 0x13
+    jc .error
+    ret
+
+.error:
+    pop bx
+    mov si, dot_entry_error
+    call print_string_red
+    call print_newline
+    mov ax, kernel_seg
+    mov es, ax
+    iret
+
+get_parent_dir:
+    pusha
+    mov di, dir_seg
+    mov es, di
+    xor di, di
+    mov dx, 512
+    mov si, dot_str
+.loop:
+    mov cx, 11
+    push si
+    push di
+    repe cmpsb
+    pop di
+    pop si
+    je .found
+
+    add di, 32
+    dec dx
+    jnz .loop
+
+    popa
+    pop bx
+    mov si, no_dot_str
+    call print_string_red
+    call print_newline
+    iret
+.found:
+    mov ax, [es:di+0x1a]
+    mov [parent_dir], ax
+    popa
+    ret
+
+;---------------------------------------delete a directory-------------------------------------------
+delete_directory:
+    pusha
+    push es
+    mov ax, [es:di+0x1a]
+    call cluster_to_sec
+
+    mov [file_dap+8], ax
+    mov [file_dap+6], word dir_seg
+    mov [file_dap+4], word 0x5000
+    xor ax, ax
+    mov al, [sec_per_cluster]
+    mov [file_dap+2], ax
+
+    mov ah, 0x42
+    mov dl, [drive_number]
+    mov si, file_dap
+    int 0x13
+    jc .error
+
+    mov di, dir_seg
+    mov es, di
+    mov di, 0x5000
+    mov dx, 64
+
+.loop:
+    mov al, [es:di]
+    cmp al, 0x00
+    je .next
+    cmp al, 0xe5
+    je .next
+    cmp al, '.'
+    je .next
+
+    jmp .del_error
+.next:
+    add di, 32
+    dec dx
+    jnz .loop
+    pop es
+    popa
+    jmp delete_object.empty_dir
+
+.error:
+    pop es
+    popa
+    mov si, disk_error_msg
+    call print_string_red
+    call print_newline
+    mov ax, kernel_seg
+    mov es, ax
+    iret
+
+.del_error:
+    pop es
+    popa
+    mov si, dir_not_empty
+    call print_string_red
+    call print_newline
     mov ax, kernel_seg
     mov es, ax
     iret

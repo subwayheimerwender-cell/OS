@@ -207,10 +207,19 @@ flp_search_root:
     mov dx, 512
     jmp .search_loop
 flp_found_file:
-
+    cmp byte [es:di+0xb], 0x10
+    je .dir
     mov ax, [es:di+0x1a]
     mov [program_cluster], ax
     ret
+.dir:
+    pop bx
+    mov si, read_dir_str
+    call print_string_red
+    call print_newline
+    mov ax, kernel_seg
+    mov es, ax
+    iret
 flp_file_err:
     pop bx
     mov si, flp_file_error
@@ -266,8 +275,15 @@ flp_load_file:
     jb .loop
     ret
 flp_print_file:
+    cmp byte [sub_dir], 1
+    jne .continue
+    mov ax, dir_seg
+    mov es, ax
+    jmp .read
+.continue:
     xor ax, ax
     mov es, ax
+.read:
     mov si, file_content_str
     call print_string_cyan
     call print_newline
@@ -509,6 +525,12 @@ flp_get_data:
 flp_write_entry:
     xor ax, ax
     mov es, ax
+
+    cmp byte [sub_dir], 1
+    jne .write_entry
+    mov ax, dir_seg
+    mov es, ax
+.write_entry:
     pop si
     mov cx, 11
     push di
@@ -561,13 +583,14 @@ del_file_flp:
     cmp byte [sub_dir], 1
     jne .search_root
     call flp_search_subdir
+    mov [es:di], 0xe5
+    call flp_write_subdir
     jmp .continue
 .search_root:
     call flp_search_root
-.continue:
     mov [es:di], 0xe5
     call flp_write_root
-
+.continue:
     mov bx, [es:di+0x1a]
     xor ax, ax
     mov ds, ax
@@ -700,7 +723,7 @@ flp_search_program_loop:
     ; int 0x24
     ; pop si
     ; call flp_search_subdir
-    jmp flp_program_found
+    ;jmp flp_program_found
     mov ax, kernel_seg
     mov es, ax
     mov si, programnotfound_str
@@ -1102,6 +1125,7 @@ flp_search_fat:
     mov ax, kernel_seg
     mov ds, ax
     mov [fat_cluster], bx
+    mov [current_dir], bx
     pop si
     call flp_write_fat
     push si
