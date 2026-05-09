@@ -8,16 +8,14 @@ READ-Command
 
 -If you read a long file (more than 28 lines), then the READ-Command stops at
  line 28.
-
  Press any key to continue reading or press 'q' to quit to terminal again
 
 
 WRITE-Command
--The WRITE-Command writes an empty .TXT or .ASM file to the disk. 
+-The WRITE-Command writes an empty textfile to the disk. 
  You have to name this file in the 8.3 format.
--After creating the file you can open the file with the XIR Texteditor
- or the EDIT program. The edit program will soon highlight Assembly in
- .ASM files.
+-After creating the file you can open the file with the XEDIT texteditor to
+ write more text if you want.
 
 LS-Command:
 -The LS-Command shows the content of the root directory. It will also show
@@ -30,17 +28,20 @@ RENAME-Command:
 
 DEL-Command:
 -With the DEL-Command you can delete files and programs. Note that if you
- delete a file, there is no turning back. Altough it might seem so, you cant
- delete the KERNEL.BIN file.
+ delete a file, there is no turning back. KERNEL.BIN is protected.
 
 LSDISK-Command:
--To see all available disks type LSDISK. It will show you floppies
- and hard disks.
+-To see all available disks type LSDISK. It will show you the 
+number of floppies and hard disks.
 
 CDISK-Command:
 -The CDISK-Command allows you to use multiple disks. To change the disk, 
- type CDISK and then the letter of the disk. Floppy disks are marked with
- the letters A and B. The system supports max. 5 disks at the same time.
+ type CDISK and then the letter of the disk.
+ A:/    1. Floppy
+ B:/    2. Floppy
+ C:/    1. Hard Disk
+ D:/    2. Hard Disk
+ E:/    3. Hard Disk
 
 To use all these commands simply type it like this: command <args>
 Example: cdisk D / read SYSTEM.TXT
