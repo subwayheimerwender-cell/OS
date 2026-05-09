@@ -6,7 +6,7 @@ start:
     mov es, ax
     mov ds, ax
     
-    ;call init_drives
+    call init_drives
     call print_drives
     call print_total
     jmp exit
@@ -19,12 +19,12 @@ init_drives:
 init_drives_loop:
     int 0x13
     jc init_floppies
-    inc cx
+    inc cl
     inc dl
     cmp dl, 0x84
     jb init_drives_loop
 init_floppies:
-    mov [drive], cx
+    mov [drive], cl
     xor cx, cx
     mov es, cx
     mov ah, 0x02
@@ -43,7 +43,8 @@ init_floppies_loop:
     cmp dl, 0x02
     jb init_floppies_loop
 init_drives_done:
-    mov [floppy], si
+    mov ax, si
+    mov [floppy], al
     mov ax, 0x5000
     mov es, ax
     ret
@@ -56,7 +57,7 @@ print_drives:
     mov si, a_str
     mov bl, 0x0f
     call print_start
-    cmp [floppy], 0
+    cmp byte [floppy], 0
     je not_detected
     mov si, active_str
     mov bl, 0x0b
@@ -66,7 +67,7 @@ floppy_b:
     mov si, b_str
     mov bl, 0x0f
     call print_start
-    cmp [floppy], 1
+    cmp byte [floppy], 1
     jle not_detected2
     mov si, active_str
     mov bl, 0x0b
@@ -84,7 +85,7 @@ drive_c:
     mov si, d_str
     mov bl, 0x0f
     call print_start
-    cmp word [drive], 0
+    cmp byte [drive], 0
     je not_detected3
     mov si, active_str
     mov bl, 0x0b
@@ -94,7 +95,7 @@ drive_e:
     mov si, e_str
     mov bl, 0x0f
     call print_start
-    cmp [drive], word 1
+    cmp byte [drive], 1
     jle not_detected4
     mov si, active_str
     mov bl, 0x0b
@@ -122,13 +123,13 @@ print_total:
     mov si, floppies_str
     mov bl, 0x0f
     call print_start
-    mov ax, [floppy]
+    movzx ax, byte [floppy]
     call print_dec
     call print_newline
     mov si, drives_str
     mov bl, 0x0f
     call print_start
-    mov ax, [drive]
+    movzx ax, byte [drive]
     call print_dec
     ret
 not_detected:
@@ -176,8 +177,8 @@ print_dec:
     ret
 exit:
     retf
-drive: dw 0
-floppy: dw 0
+drive: db 0
+floppy: db 0
 a_str: db 'A:/      ', 0
 b_str: db 'B:/      ', 0
 c_str: db 'C:/      ', 0
@@ -188,10 +189,10 @@ header: db 'Disk:       Status:         Size:           Used:', 0x0a, 0x0d, 0
 root_disk_str: db 'Root Disk', 0
 dap:
     db 0x10
-    db 1
-    dw 0
+    db 0
+    dw 1
     dw 0x0000
-    dw 0x0000
+    dw 0x8000
     dq 0
 active_str: db 'Active', 0
 floppies_str: db 'Floppies: ', 0
