@@ -9,6 +9,8 @@ start:
     mov ds, ax
     mov es, ax
 
+    mov [stack_pointer], sp         ;save stack pointer because the stack might get destroyed by push/pop while copying files and the error handler cant return to shell
+
     xor ax, ax
     mov cx, 3
     xor bl, bl
@@ -271,29 +273,16 @@ no_drive:
     xor bh, bh
     int 0x10
 
-    mov si, copying_fat_str
-    mov bl, 0x0f
-    mov bh, 0x02
-    int 0x27
-
-    call write_fat
-
-    mov ah, 0x02
-    mov dl, 2
-    mov dh, 15
-    xor bh, bh
-    int 0x10
-
     mov si, copying_root_str
     mov bl, 0x0f
     mov bh, 0x02
     int 0x27
 
-    call write_root
+    ;call write_root
 
     mov ah, 0x02
     mov dl, 2
-    mov dh, 16
+    mov dh, 15
     xor bh, bh
     int 0x10
 
@@ -306,7 +295,33 @@ no_drive:
 
     mov ah, 0x02
     mov dl, 2
+    mov dh, 16
+    xor bh, bh
+    int 0x10
+
+    mov si, copying_fat_str
+    mov bl, 0x0f
+    mov bh, 0x02
+    int 0x27
+
+    call write_fat
+
+    mov ah, 0x02
+    mov dl, 2
     mov dh, 17
+    xor bh, bh
+    int 0x10
+
+    mov si, copy_bootsector
+    mov bl, 0x0f
+    mov bh, 0x02
+    int 0x27
+    call write_root
+    call copy_bootcode
+
+    mov ah, 0x02
+    mov dl, 2
+    mov dh, 18
     xor bh, bh
     int 0x10
 
@@ -319,6 +334,7 @@ no_drive:
     int 0x16
     mov ax, 0x12
     int 0x10
+    mov sp, [stack_pointer]
     retf
 
 .invalid:
@@ -454,6 +470,7 @@ load_fat:
 
 
 error:
+    mov sp, [stack_pointer]
     mov ah, 0x03
     int 0x10
     add dh, 1
@@ -467,6 +484,8 @@ error:
     int 0x27
     xor ah, ah
     int 0x16
+    mov ax, 0x12
+    int 0x10
     retf
 
 
@@ -538,6 +557,14 @@ load_bpb:
     mov al, [es:di+13]
     mov [ext_sec_per_cluster], al
 
+    movzx ax, byte [num_fat]
+    mov bx, [fat_size]
+    mul bx
+    add ax, [reserved_sectors]
+
+    add ax, [root_size]
+    mov [cur_data_start], ax
+
     mov ax, 0x5000
     mov es, ax
     ret
@@ -583,6 +610,7 @@ write_root:
     mov [dap+8], ax
     mov [dap+2], 16
 
+    xor dx, dx
     mov ax, [root_size]
     add ax, 15
     mov bx, 16
@@ -608,14 +636,7 @@ write_root:
 
     ret
 
-copy_files:
-    movzx ax, byte [num_fat]
-    mov bx, [fat_size]
-    mul bx
-    add ax, [reserved_sectors]
-
-    add ax, [root_size]
-    mov [cur_data_start], ax
+copy_files2:
     mov ax, [ext_root_start]
     add ax, [root_size]
     mov [data_start], ax
@@ -660,6 +681,311 @@ copy_files:
 
 .done:
     ret
+
+copy_files:
+    mov ax, [ext_root_start]
+    add ax, [root_size]
+    mov [data_start], ax
+    mov ax, [bytes_per_sec]
+    movzx bx, byte [sec_per_cluster]
+    mul bx
+    mov bx, 32
+    div bx
+    mov [sub_entries], ax
+    cmp byte [sub_dir], 1
+    je .sub_dir
+
+    xor ax, ax
+    mov es, ax
+    mov di, 0x500
+    mov dx, [root_entries]
+    jmp .search_loop
+.sub_dir:
+    mov ax, 0x8700
+    mov es, ax
+    xor di, di
+    mov dx, [sub_entries]
+.search_loop:
+    mov al, [es:di]
+    cmp al, 0xe5
+    je .next
+    cmp al, 0x00
+    je .done
+    ; cmp al, 0x41
+    ; je .done
+
+    mov ah, 0x0e
+    mov al, '/'
+    mov bl, 0x0a
+    int 0x10
+
+    push dx
+    call load_write_file
+    pop dx
+
+    cmp byte [es:di+0xb], 0x10
+    je .dir
+.next:
+    add di, 32
+    dec dx
+    jnz .search_loop
+.done:
+    cmp byte [sub_dir], 0
+    je .end
+    
+    mov ax, 0x8700
+    mov es, ax
+    xor di, di
+    mov dx, [sub_entries]
+    mov si, dot_dot_str
+.search_dot_dot:
+    mov cx, 11
+    push si
+    push di
+    repe cmpsb
+    pop di
+    pop si
+    je .found_dot
+
+    add di, 32
+    dec dx
+    jnz .search_dot_dot
+
+    mov ah, 0x03
+    int 0x10
+    add dl, 1
+    xor bh, bh
+    mov ah, 0x02
+    int 0x10
+    mov si, no_dot_str
+    mov bl, 0x0f
+    mov bh, 0x02
+    int 0x27
+    mov sp, [stack_pointer]
+    xor ah, ah
+    int 0x16
+    retf
+.found_dot:
+    cmp word [es:di+0x1a], 0
+    je .root
+
+    mov ax, [es:di+0x1a]
+    call cluster_to_sec
+    mov [dap+8], ax
+    movzx ax, byte [sec_per_cluster]
+    mov [dap+2], ax
+    mov [dap+4], word 0
+    mov [dap+6], word 8700
+    mov si, dap
+    mov dl, [current_drive]
+    mov ah, 0x42
+    int 0x13
+    jc error
+
+    jmp .dir_back
+.root:
+    mov [sub_dir], byte 0
+    jmp .dir_back
+.end:
+    ret
+
+.dir:
+    dec dx
+    push es
+    push di
+    push dx
+
+    mov ax, [es:di+0x1a]
+    call cluster_to_sec
+    mov [dap+8], ax
+    movzx ax, byte [sec_per_cluster]
+    mov [dap+2], ax
+    mov [dap+4], word 0
+    mov [dap+6], word 0x8700
+    mov si, dap
+    mov dl, [current_drive]
+    mov ah, 0x42
+    int 0x13
+    jc error
+
+    mov byte [sub_dir], 1
+    mov ax, 0x8700
+    mov es, ax
+    mov di, 64
+    mov dx, [sub_entries]
+    jmp .search_loop
+
+.dir_back:
+    pop dx
+    pop di
+    pop es
+    add di, 32
+    jmp .search_loop
+
+load_write_file:
+    mov ax, [es:di+0x1a]
+    mov [cluster], ax
+    ;mov [fat_offset], ax
+    ;add [fat_offset], word 2
+    movzx ax, byte [sec_per_cluster]
+    mov [dap+2], ax
+    mov [dap+4], word 0
+    mov [dap+6], word 0x7000
+    mov cx, [es:di+0x1c]
+.load_loop:
+    mov ax, [cluster]
+    push cx
+    call cluster_to_sec
+    pop cx
+    mov [dap+8], ax
+    mov si, dap
+    mov dl, [current_drive]
+    mov ah, 0x42
+    int 0x13
+    jc error
+
+    mov ax, [bytes_per_sec]
+    movzx bx, byte [sec_per_cluster]
+    mul bx
+    add [dap+4], ax
+
+    mov bx, [cluster]
+    xor ax, ax
+    mov ds, ax
+    shl bx, 1
+    mov si, 0x3999          ;fat adress
+    add si, bx
+    mov ax, [si]
+    mov bx, 0x5000          ;program segment
+    mov ds, bx
+    mov [cluster], ax
+
+    cmp ax, 0xfff8
+    jb .load_loop
+
+    mov ax, [ext_bytes_per_sec]
+    movzx bx, byte [ext_sec_per_cluster]
+    mul bx
+    mov bx, ax
+    mov ax, cx
+    cmp ax, 0
+    je .dir
+    add ax, bx
+    dec ax
+
+    xor dx, dx
+    div bx
+    mov cx, ax
+    mov bh, 0x01
+    int 0x27
+.first_write:
+    movzx ax, byte [ext_sec_per_cluster]
+    mov [dap+2], ax
+    mov [dap+4], word 0
+    mov [dap+6], word 0x7000
+    mov ax, [data_start]
+    mov [dap+8], ax
+    mov ah, 0x43
+    xor al, al
+    mov dl, [drive_number]
+    mov si, dap
+    int 0x13
+    jc error
+
+    movzx ax, byte [ext_sec_per_cluster]
+    add [data_start], ax
+    mov ax, [ext_bytes_per_sec]
+    movzx bx, byte [ext_sec_per_cluster]
+    mul bx
+    add [dap+4], ax
+
+    dec cx
+    jz .done
+.write_loop:
+    mov ax, [data_start]
+    mov [dap+8], ax
+
+    mov ah, 0x43
+    xor al, al
+    mov dl, [drive_number]
+    mov si, dap
+    int 0x13
+    jc error
+
+    movzx ax, byte [ext_sec_per_cluster]
+    add [data_start], ax
+    mov ax, [ext_bytes_per_sec]
+    movzx bx, byte [ext_sec_per_cluster]
+    mul bx
+    add [dap+4], ax
+
+    push es
+    push di
+    mov ax, 0x3000
+    mov es, ax
+    mov di, [fat_offset]
+    shl di, 1
+    inc word [fat_offset]
+    mov ax, [fat_offset]
+    mov [es:di], ax
+    pop di
+    pop es
+
+    dec cx
+    jnz .write_loop
+
+.done:
+    push es
+    push di
+    mov ax, 0x3000
+    mov es, ax
+    mov di, [fat_offset]
+    shl di, 1
+    mov [di], word 0xfff8
+    pop di
+    pop es
+
+    ret
+
+.dir:
+    mov cx, 1
+    jmp .first_write
+cluster_to_sec:
+    sub ax, 2
+    movzx cx, byte [sec_per_cluster]
+    mul cx
+    add ax, [cur_data_start]
+    ret
+
+
+copy_bootcode:
+    ;boot code is 450 bytes
+
+    xor ax, ax
+    mov ds, ax
+    mov si, 0x7c00+62       ;skip BPB
+
+    mov ax, 0x9000
+    mov es, ax
+    mov di, 0x7e00+62
+
+    mov cx, 450
+    rep movsb
+
+    mov ax, 0x5000
+    mov ds, ax
+
+    mov [dap+8], word 0
+    mov [dap+2], word 1
+    mov [dap+4], word 0x7e00
+    mov [dap+6], word 0x9000
+    mov dl, [drive_number]
+    mov si, dap
+    mov ah, 0x43
+    xor al, al
+    int 0x13
+    jc error
+    ret
 ;====data====
 
 dap:
@@ -686,7 +1012,8 @@ copy_root: db 'Loading Root Directory...', 0
 loading_bpb: db 'Loading boot sector...', 0
 copying_fat_str: db 'Copying FAT...', 0
 copying_root_str: db 'Copying Root Directory...', 0
-copying_files_str: db 'Copying files...', 0
+copying_files_str: db 'Copying files: ', 0
+copy_bootsector: db 'Copying Bootsector...', 0
 install_success: db 'Successfully installed OS. Press a key to finish', 0
 reserved_sectors: dw 0
 bytes_per_sec: dw 0
@@ -710,3 +1037,12 @@ ext_fat_size: dw 0
 ext_num_fat: db 0
 data_start: dw 0
 error_msg: db 'Error while installing OS...', 0
+
+sub_entries: dw 0
+sub_dir: db 0
+
+no_dot_str: db 'No Dot Entry found. Press a key', 0
+dot_dot_str: db '..         ', 0
+cluster: dw 0
+stack_pointer: dw 0
+fat_offset: dw 2
