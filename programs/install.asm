@@ -278,7 +278,7 @@ no_drive:
     mov bh, 0x02
     int 0x27
 
-    ;call write_root
+    call write_root
 
     mov ah, 0x02
     mov dl, 2
@@ -442,29 +442,39 @@ load_fat:
     mov bx, 16
     div bx
     mov cx, ax
-    mov ax, 0x5000
+    
+
+    mov ax, 0x3000
     mov es, ax
+    xor di, di
 
-    mov ax, [reserved_sectors]
-    mov [dap+8], ax
-    mov [dap+6], word 0x3000            ;load FAT at 0x3000:0x0000
-    mov [dap+2], word 16
-.loop:
-    mov ah, 0x42
-    mov dl, [current_drive]
-    mov si, dap
-    int 0x13
-    jc error
+    xor ax, ax
+    mov cx, 0x5000
+    rep stosw
+    ; mov ax, 1       ;reserved sector (buffer = 0)
+    ; mov [dap+8], ax
+    ; mov ax, 2
+    ; mov [dap+2], ax
+;     mov ax, [reserved_sectors]
+;     mov [dap+8], ax
+;     mov [dap+6], word 0x3000            ;load FAT at 0x3000:0x0000
+;     mov [dap+2], word 16
+; .loop:
+;     mov ah, 0x42
+;     mov dl, [current_drive]
+;     mov si, dap
+;     int 0x13
+;     jc error
 
-    mov ax, [bytes_per_sec]
-    mov bx, 16
-    mul bx
-    add [dap+4], ax
-    mov ax, 16
-    add [dap+8], ax
+;     mov ax, [bytes_per_sec]
+;     mov bx, 16
+;     mul bx
+;     add [dap+4], ax
+;     mov ax, 16
+;     add [dap+8], ax
 
-    dec cx
-    jnz .loop
+;     dec cx
+;     jnz .loop
     ret
 
 
@@ -503,10 +513,12 @@ load_root:
     mov bx, 32
     mul bx
     mov bx, [bytes_per_sec]
+    xor dx, dx
     div bx
     mov [root_size], ax
     
     mov bx, 16
+    xor dx, dx
     div bx
     mov cx, ax
     mov [dap+4], word 0
@@ -570,10 +582,13 @@ load_bpb:
     ret
 
 write_fat:
-    xor dx, dx
-    mov ax, [fat_sectors]
+    movzx ax, byte [ext_num_fat]
+    mov bx, [ext_fat_size]
+    mul bx
+
     add ax, 15
     mov bx, 16
+    xor dx, dx
     div bx
     mov cx, ax
 
@@ -608,19 +623,20 @@ write_root:
     add ax, [ext_reserved_sectors]
     mov [ext_root_start], ax
     mov [dap+8], ax
-    mov [dap+2], 16
+    mov [dap+2], word 16
 
     xor dx, dx
     mov ax, [root_size]
     add ax, 15
     mov bx, 16
-    div ax
+    div bx
     mov cx, ax
     mov [dap+4], word 0
     mov [dap+6], word 0x4000
 .loop:
     mov si, dap
     mov ah, 0x43
+    xor al, al
     mov dl, [drive_number]
     int 0x13
     jc error
@@ -686,6 +702,7 @@ copy_files:
     mov ax, [ext_root_start]
     add ax, [root_size]
     mov [data_start], ax
+    mov [ext_data_start], ax
     mov ax, [bytes_per_sec]
     movzx bx, byte [sec_per_cluster]
     mul bx
@@ -711,8 +728,6 @@ copy_files:
     je .next
     cmp al, 0x00
     je .done
-    ; cmp al, 0x41
-    ; je .done
 
     mov ah, 0x0e
     mov al, '/'
@@ -825,13 +840,39 @@ copy_files:
 load_write_file:
     mov ax, [es:di+0x1a]
     mov [cluster], ax
-    ;mov [fat_offset], ax
-    ;add [fat_offset], word 2
+
+    mov bx, [next_cluster]
+    mov [last_free_cluster], bx
+    cmp byte [sub_dir], 1
+    je .sub_dir
+
+    mov ax, 0x4000
+    mov ds, ax
+    mov si, di
+    sub si, 0x500
+    mov [ds:si+0x1a], bx
+    mov ax, 0x5000
+    mov ds, ax
+    jmp .continue
+.sub_dir:
+    mov ax, 0x8700
+    mov ds, ax
+    mov si, di
+    mov [ds:si+0x1a], bx
+    mov ax, 0x5000
+    mov ds, ax
+    ; mov [fat_offset], ax
+.continue:
+    mov ax, [next_cluster]
+    mov [fat_offset], ax
+
     movzx ax, byte [sec_per_cluster]
     mov [dap+2], ax
     mov [dap+4], word 0
     mov [dap+6], word 0x7000
     mov cx, [es:di+0x1c]
+    mov dx, [es:di+0x1e]
+    push dx
 .load_loop:
     mov ax, [cluster]
     push cx
@@ -867,17 +908,15 @@ load_write_file:
     movzx bx, byte [ext_sec_per_cluster]
     mul bx
     mov bx, ax
+    pop dx
     mov ax, cx
     cmp ax, 0
     je .dir
     add ax, bx
     dec ax
 
-    xor dx, dx
     div bx
     mov cx, ax
-    mov bh, 0x01
-    int 0x27
 .first_write:
     movzx ax, byte [ext_sec_per_cluster]
     mov [dap+2], ax
@@ -931,6 +970,7 @@ load_write_file:
     pop di
     pop es
 
+    inc word [next_cluster]
     dec cx
     jnz .write_loop
 
@@ -941,10 +981,11 @@ load_write_file:
     mov es, ax
     mov di, [fat_offset]
     shl di, 1
-    mov [di], word 0xfff8
+    mov [es:di], word 0xfff8
     pop di
     pop es
 
+    inc word [next_cluster]      ;next free cluster for dir entry
     ret
 
 .dir:
@@ -955,6 +996,12 @@ cluster_to_sec:
     movzx cx, byte [sec_per_cluster]
     mul cx
     add ax, [cur_data_start]
+    ret
+
+ext_cluster_to_sec:
+    sub ax, 2
+    movzx cx, byte [ext_sec_per_cluster]
+    mul cx
     ret
 
 
@@ -1027,7 +1074,7 @@ root_size: dw 0
 cur_data_start: dw 0
 
 ext_root_start: dw 0
-
+ext_data_start: dw 0
 
 ext_reserved_sectors: dw 0
 ext_bytes_per_sec: dw 0
@@ -1046,3 +1093,6 @@ dot_dot_str: db '..         ', 0
 cluster: dw 0
 stack_pointer: dw 0
 fat_offset: dw 2
+last_cluster: dw 0
+next_cluster: dw 2
+last_free_cluster: dw 0
