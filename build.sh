@@ -23,12 +23,14 @@ nasm -f bin programs/install.asm -o zprograms/install.bin
 nasm -f bin programs/scancode.asm -o zprograms/scancode.bin
 printf "${GREEN}Succesfully compiled files!${RESET}\n"
 
-# gcc -ffreestanding -nostdlib -c ~/Downloads/xmode/xasm/xasm.c -o ~/Downloads/xmode/xasm/xasm.o        # Only for XMODE
-# ld -T ~/Downloads/xmode/xasm/linker.ld -o ~/Downloads/xmode/xasm/xasm.elf ~/Downloads/xmode/xasm/xasm.o #Only for XMODE
-# objcopy -O binary ~/Downloads/xmode/xasm/xasm.elf ~/Downloads/xmode/xasm/xasm.bin                     # Only for XMODE
+# gcc -ffreestanding -nostdlib -c ~/Downloads/xmode/xasm/xasm.c -o ~/Downloads/xmode/xasm/xasm.o
+# ld -T ~/Downloads/xmode/xasm/linker.ld -o ~/Downloads/xmode/xasm/xasm.elf ~/Downloads/xmode/xasm/xasm.o
+# objcopy -O binary ~/Downloads/xmode/xasm/xasm.elf ~/Downloads/xmode/xasm/xasm.bin
 
 # rm disk.img
-# dd if=/dev/zero of=disk.img bs=1M count=9
+# dd if=/dev/zero of=disk.img bs=1M count=9                                                            # Create disk image
+# mkdosfs -F 16 -v -h 2048 disk.img
+# mkdosfs -F 16 -v --offset 2048 -h 2048 disk.img                                                        # 1MB offset
 mkdosfs -F 16 -v disk.img
 dd if=boot.bin of=disk.img bs=1 count=450 seek=62 skip=62 conv=notrunc
 mcopy -i disk.img kernel/kernel.bin ::KERNEL.BIN
@@ -47,11 +49,15 @@ printf "${GREEN}Copied data to disk image. Loading QEMU...${RESET}\n"
 qemu-system-i386 -hda disk.img -hdb disk2.img -fda floppy.img -fdb floppy8.img -m 64M # -d int -no-reboot # -hdc disk3.img -device ahci 
 # qemu-system-i386 \
 #   -drive file=disk.img,format=raw,if=ide,index=0 \
-#   -boot c
+#   -boot c \
+#   -m 50M \
+  #-drive if=pflash,format=raw,file=/home/technodon/Downloads/xmode/build/OVMF_CODE.4m.fd \
+  #-drive if=pflash,format=raw,file=/home/technodon/Downloads/xmode/build/OVMF_VARS.4m.fd \
 # mkdosfs -F 12 -v disk3.img
 # mkdosfs -F 16 -v disk2.img
 
-# memory map
+
+# memory map of Xiromos
 # 0x0x0000:0500 - 0x0000:0x3998: root directory
 # 0x0000:0x3999 - 0x0000:0x7bff: FAT
 # 0x0000:0x7c00 - 0x0000:0x7e00: boot code
@@ -65,3 +71,10 @@ qemu-system-i386 -hda disk.img -hdb disk2.img -fda floppy.img -fdb floppy8.img -
 # lsblk
 # sudo dd if=disk.img of=/dev/sdb bs=4M status=progress conv=fsync
 # sync
+
+
+
+# HOW TO USE XMODE
+# First you have to uncomment "./buildx.sh"
+# Then change in the buildx.sh the directories (will be fixed soon)
+# also install the following packages: nasm, qemu-full, mtools, mingw-w64-gcc (arch linux)
