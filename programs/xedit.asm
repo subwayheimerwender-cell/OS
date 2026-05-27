@@ -195,8 +195,10 @@ read_cursor_pos:
 open_file:
     pop ax
 
-    ;clear screen
-    mov ax, 0x12
+    mov ah, 0x02
+    xor dl, dl
+    mov dh, 29
+    xor bh, bh
     int 0x10
 
     ;ask user for input
@@ -212,16 +214,16 @@ open_file:
     mov si, inputfile_buffer
     mov di, outputfile_buffer
     int 0x22
-    
-    mov ax, 0x12
-    int 0x10
-    mov si, header_msg
-    mov bl, 0x0b
-    call print_start
-    mov si, instructions_msg
-    mov bl, 0x0b
-    call print_start
 
+    mov si, outputfile_buffer
+    mov cx, 11
+.loop:
+    lodsb
+    mov bl, 0x0a
+    mov ah, 0x0e
+    int 0x10
+    loop .loop
+    
     mov ah, 0x01
     mov si, outputfile_buffer
     mov di, text_buffer
@@ -229,7 +231,12 @@ open_file:
     xor di, di
     int 0x23
 
-    mov si, text_buffer
+    mov ah, 0x02
+    xor dl, dl
+    mov dh, 2
+    xor bh, bh
+    int 0x10
+
     mov bl, 0x0f
     call print_buffer
     jmp write_loop
@@ -262,16 +269,30 @@ clear_buffer:
     rep stosb
     ret
 print_buffer:
-    mov di, text_buffer
-    mov es, di
-    xor di, di
+    mov si, text_buffer
+    mov ds, si
+    xor si, si
 .loop:
-    mov si, es:di
     lodsb
+    cmp al, 0x0a
+    je .handle_newline
+
     mov ah, 0x0e
     int 0x10
-    inc di
     loop .loop
+    mov ax, 0x5000
+    mov ds, ax
+    ret
+.handle_newline:
+    mov ah, 0x0e
+    mov al, 0x0a
+    int 0x10
+    mov al, 0x0d
+    int 0x10
+    dec cx
+    jnz .loop
+    mov ax, 0x5000
+    mov ds, ax
     ret
 ;---------other functions---------
 print_start:
