@@ -74,17 +74,15 @@ main:
     ;calculate root dir start
     ;ReservedAreaCnt + (NumberOfFATs * FATSz16)
 
-    xor ax, ax
-    mov al, [BPB_NumberOfFATs]
+    movzx ax, byte [BPB_NumberOfFATs]
     mov bx, [BPB_FATSz16]
     mul bx
     add ax, [BPB_ReservedAreaCnt]
+    add ax, [BPB_HiddenSectors]
     mov [RootStartSec], ax
     mov [dap+0x08], ax
-    mov word [dap+10], 0
 
     ;calculate data start sector
-    xor ax, ax
     mov ax, [RootStartSec]
     add ax, [RootDirSectors]
     mov [DataStartSector], ax
@@ -120,8 +118,7 @@ load_root:
     mov si, dap              ;disk adress packet - expected in SI by int 0x13
     call read_sectors
 
-    xor dx, dx
-    mov dx, word [BPB_RootEntry]
+    mov dx, [BPB_RootEntry]
     mov di, 0x0500          ;adress where to search kernel.bin, [ES:DI]
 search_kernel:
     mov cx, 11               ;length of file name, needed for 'rep'
@@ -137,7 +134,7 @@ search_kernel:
     
 load_FAT:
     mov di, [es:di+0x1a]             ;di = cluster no.
-    mov word [cluster], di           ;save the cluster number in a variable
+    mov [cluster], di           ;save the cluster number in a variable
     mov si, ok_msg                   ;debug feature
     call print_start
 
@@ -150,8 +147,6 @@ load_FAT:
     mov ax, [BPB_ReservedAreaCnt]
     add ax, [BPB_HiddenSectors]
     mov [dap+0x08], ax                      ;LBA - FAT starts after the reserved sectors
-    mov word [dap+10], 0                    ;fill the high word of the DAP with zeros
-    mov dword [dap+12], 0
     mov si, dap
     call read_sectors
 load_kernel:
@@ -162,14 +157,11 @@ load_kernel:
 kernel_loop:
     mov si, ok_msg
     call print_start
-    mov ax, word [cluster]
+    mov ax, [cluster]
     call cluster_to_sec         ;get the first sector of the cluster
     mov word [dap+0x08], ax          ;ax = first sector of cluster in data area
-    xor bx, bx
-    mov bl, [BPB_SectorsPerCluster]        
+    movzx bx, byte [BPB_SectorsPerCluster]
     mov [dap+0x02], bx           ;number of sectors to read
-    mov word  [dap+10], 0
-    mov dword [dap+12], 0
     mov si, dap
     call read_sectors           ;load the cluster into memory
     movzx cx, byte [BPB_SectorsPerCluster]
@@ -177,7 +169,7 @@ kernel_loop:
     mul cx
     add [dap+0x04], ax
     jnc .no_overflow
-    add word [dap+0x06], 0x1000
+    add [dap+0x06], word 0x1000
 
 .no_overflow:
     mov bx, [cluster]
@@ -223,10 +215,9 @@ error:
 cluster_to_sec:
 ;FirstSectorOfCluster = (cluster - 2) * BPB_SectorsPerCluster + DataStartSector
     sub ax, 2
-    xor cx, cx 
-    mov cl, [BPB_SectorsPerCluster]
+    movzx cx, byte [BPB_SectorsPerCluster]
     mul cx
-    add ax, word [DataStartSector]
+    add ax, [DataStartSector]
     ret
 read_sectors:
     mov ah, 0x42
@@ -251,6 +242,24 @@ file_kernel_bin db "KERNEL  BIN"
 ;In the root directory it searches for the kernel.bin file, if found, the bootloader saves it cluster number
 ;finally the bootloader loads the FAT sectors into memory and jumps to the kernel
 ;----
+; times 445 - ($ - $$) db 0
+; partition1:
+;     db 0x80         ;bootable
+;     db 0, 0x2, 0    ;CHS
+;     db 0x6          ;FAT16
+;     db 0, 0x20, 0
+
+;     dd 0            ;LBA start
+;     dd 2048         ;LBA sectors
+; partition2:
+;     db 0
+;     db 0,0,0
+;     db 0x6
+;     db 0,0,0
+
+;     dd 2048
+;     dd 4096
+; times 32 db 0
 times 510 - ($ - $$) db 0
 dw 0xAA55
 ;================================================
