@@ -197,6 +197,8 @@ get_bpb_data:
     mov [sec_per_track], ax
     mov ax, [es:di+26]
     mov [num_heads], ax
+    mov ax, [es:di+28]
+    mov [hidden_sectors], ax
 
     mov ax, kernel_seg
     mov es, ax
@@ -383,6 +385,24 @@ delete_dir:
     ret
 
 check_xmode_start:
+    mov ax, 0x9000
+    mov es, ax
+    xor di, di
+    mov si, file_1boot_sys
+    mov di, dir_sys
+    call load_search_dir
+    jc .done
+
+    mov ax, 0x8000
+    mov es, ax
+    xor di, di
+    mov al, [es:di]
+    cmp al, byte '1'
+    jne .continue
+    mov si, program_install_bin
+    int 0x20
+    ret
+.continue:
     mov ax, 0x9000
     mov es, ax
     xor di, di

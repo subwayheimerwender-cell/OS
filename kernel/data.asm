@@ -140,6 +140,7 @@ program_ascii_bin  db "ASCII   BIN"
 program_edit_bin db "EDIT    BIN"
 program_lsdisk_bin db "LSDISK  BIN"
 program_help_bin: db "HELP    BIN"
+program_install_bin db "INSTALL BIN"
 dir_programs db "PROGRAMS   "
 fat8_str db "FAT8    "
 dot_str db ".          "
@@ -147,7 +148,9 @@ dot_dot db "..         "
 bin_ext db "BIN"
 xmode_str db "XMODE   BIN"
 file_xmode_sys db "AUTOSTRTSYS"
+file_1boot_sys db "1BOOT   SYS"
 dir_sys db "SYS        "
+activate_a20_str: db 'A20 Gate not active', 0
 ;red screen of death
 rsod_header: db 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB1, 0xB1, 0xB1, 0xB1, 0xB1, 0xB1, 0xB1, 0xB1, 0xB2, 0xB2, 0xB2, 0xB2, 0xB2, 0xB2, 0xDB, 0xDB, ' ','System Error', ' ', 0xDB, 0xDB, 0xB2, 0xB2, 0xB2, 0xB2, 0xB2, 0xB2, 0xB1, 0xB1, 0xB1, 0xB1, 0xB1, 0xB1, 0xB1, 0xB1, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0
 rsod_str: db '      :(', 0
@@ -165,6 +168,7 @@ root_start_sec: dw 0
 root_size: dw 0
 bytes_per_sec: dw 0
 fat_num: db 0
+hidden_sectors: dw 0
 
 drives: dw 0
 floppies: dw 0
@@ -243,6 +247,7 @@ no_dir_str: db 'This is not a directory', 0
 dir_success: db 'Directory created successfully', 0
 
 sub_dir: db 0       ;0 = root, 1 = sub
+sub_entries: dw 64
 parent_dir: dw 0   ;cluster of the parent directory, 0 = root
 current_dir: dw 0       ;cluster of the current directory, 0 = root
 
