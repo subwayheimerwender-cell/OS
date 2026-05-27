@@ -62,6 +62,13 @@ print_drives:
     mov si, active_str
     mov bl, 0x0b
     call print_start
+    mov cx, 10
+    call print_spaces
+    xor dl, dl
+    call get_size
+    jnc .newline
+    call error
+.newline:
     call print_newline
 floppy_b:
     mov si, b_str
@@ -72,6 +79,13 @@ floppy_b:
     mov si, active_str
     mov bl, 0x0b
     call print_start
+    mov cx, 10
+    call print_spaces
+    mov dl, 1
+    call get_size
+    jnc .newline
+    call error
+.newline:
     call print_newline
 drive_c:
     mov si, c_str
@@ -80,6 +94,13 @@ drive_c:
     mov si, root_disk_str
     mov bl, 0x0b
     call print_start
+    mov cx, 7
+    call print_spaces
+    mov dl, 0x80
+    call get_size
+    jnc .newline
+    call error
+.newline:
     call print_newline
 
     mov si, d_str
@@ -90,6 +111,13 @@ drive_c:
     mov si, active_str
     mov bl, 0x0b
     call print_start
+    mov cx, 10
+    call print_spaces
+    mov dl, 0x81
+    call get_size
+    jnc .newline1
+    call error
+.newline1:
     call print_newline
 drive_e:
     mov si, e_str
@@ -100,6 +128,13 @@ drive_e:
     mov si, active_str
     mov bl, 0x0b
     call print_start
+    mov cx, 10
+    call print_spaces
+    xor dl, dl
+    call get_size
+    jnc .newline1
+    call error
+.newline1:
     call print_newline
     ret
 print_start:
@@ -156,34 +191,114 @@ not_detected4:
     call print_start
     call print_newline
     ret
+; print_dec:
+;     pusha
+;     mov cx, 0
+;     mov bx, 10
+; .div_loop:
+;     mov dx, 0
+;     div bx
+;     push dx
+;     inc cx
+;     cmp ax, 0
+;     jne .div_loop
+; .print_loop:
+;     pop ax
+;     add al, '0'
+;     mov ah, 0x0e
+;     int 0x10
+;     loop .print_loop
+;     popa
+;     ret
+
+
+get_size:
+    mov ah, 0x02
+    mov al, 1
+    xor ch, ch
+    mov cl, 1
+    xor dh, dh
+    mov bx, 0x9000
+    mov es, bx
+    mov bx, 0x7e00
+    int 0x13
+    jc .error
+
+    mov ax, 0x9000
+    mov es, ax
+    mov di, 0x7e00
+    xor eax, eax
+    xor ebx, ebx
+    mov ax, [es:di+11]
+    mov bx, [es:di+19]
+    cmp bx, 0
+    jne .16
+    mov ebx, [es:di+32]
+.16:
+    mul ebx
+    mov ecx, 1024
+    div ecx
+    call print_dec
+
+
+    mov ah, 0x0e
+    mov al, ' '
+    int 0x10
+    mov al, 'K'
+    mov bl, 0x0f
+    int 0x10
+    mov al, 'B'
+    int 0x10
+
+    mov ax, 0x5000
+    mov es, ax
+    clc
+    ret
+.error:
+    stc
+    ret
+
 print_dec:
     pusha
-    mov cx, 0
-    mov bx, 10
+    xor cx, cx
+    mov ebx, 10
 .div_loop:
-    mov dx, 0
-    div bx
-    push dx
+    xor edx, edx
+    div ebx
+    push edx
     inc cx
-    cmp ax, 0
+    cmp eax, 0
     jne .div_loop
 .print_loop:
-    pop ax
+    pop eax
     add al, '0'
     mov ah, 0x0e
     int 0x10
     loop .print_loop
     popa
     ret
+
+error:
+    mov si, error_str
+    mov bl, 0x0c
+    call print_start
+    ret
+
+print_spaces:
+    mov ah, 0x0e
+    mov al, ' '
+    int 0x10
+    loop print_spaces
+    ret
 exit:
     retf
 drive: db 0
 floppy: db 0
-a_str: db 'A:/      ', 0
-b_str: db 'B:/      ', 0
-c_str: db 'C:/      ', 0
-d_str: db 'D:/      ', 0
-e_str: db 'E:/      ', 0
+a_str: db 'A:/         ', 0
+b_str: db 'B:/         ', 0
+c_str: db 'C:/         ', 0
+d_str: db 'D:/         ', 0
+e_str: db 'E:/         ', 0
 not_detected_str: db 'Not detected', 0
 header: db 'Disk:       Status:         Size:           Used:', 0x0a, 0x0d, 0
 root_disk_str: db 'Root Disk', 0
@@ -197,3 +312,5 @@ dap:
 active_str: db 'Active', 0
 floppies_str: db 'Floppies: ', 0
 drives_str: db 'Drives: ', 0
+
+error_str: db 'Error', 0
