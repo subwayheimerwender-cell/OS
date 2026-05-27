@@ -75,8 +75,7 @@ load_programs_loop:
     mov ax, word [program_cluster]          ;first cluster of the program
     call cluster_to_sec                     ;get the first sector
     mov [program_dap+8], ax                 ;set LBA
-    xor bx, bx
-    mov bl, [sec_per_cluster]
+    movzx bx, byte [sec_per_cluster]
     mov [program_dap+2], bx                 ;number of sectors to read
     mov word [program_dap+10], 0            ;fill the rest of the LBA field with zeros
     mov word [program_dap+12], 0
@@ -84,9 +83,9 @@ load_programs_loop:
     mov si, program_dap
     call read_sectors
 
-    mov cl, [sec_per_cluster]
+    movzx cx, byte [sec_per_cluster]
     mov ax, 512                                 ;standard size of cluster in FAT16
-    mul cl
+    mul cx
     add [program_dap+4], ax                     ;add one cluster to the memory adress
     adc word [program_dap+6], 0                ;increase buffer for next cluster
     mov bx, [program_cluster]                   ;get the cluster-number
@@ -261,6 +260,8 @@ program_notfound:
     jmp .not_found
 
 load_xmode:
+    cmp word [a20_seg], 0xffff
+    jne .no_a20
     clc
     mov [file_dap+0x04], word 0x8000        ;load to 0x8000:0x0000
     mov [file_dap+0x06], word 0x0000
@@ -307,6 +308,7 @@ load_xmode:
     ;mov ax, 0x03
     ;int 0x10
 
+    xor cx, cx       ; say kernel that its started via BIOS
     jmp far 0x0000:0x8000
 
     mov ax, kernel_seg
@@ -314,7 +316,11 @@ load_xmode:
     mov ds, ax
     iret
 
-
+.no_a20:
+    mov si, activate_a20_str
+    call print_string_red
+    call print_newline
+    iret
 load_search_dir:
     ;expects filename in SI
     ;expects target dir in DI

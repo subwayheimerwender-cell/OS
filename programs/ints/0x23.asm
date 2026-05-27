@@ -8,7 +8,6 @@
 api_openfile:
     ;save data
     push ds
-    push si
     mov ax, kernel_seg
     mov ds, ax
     mov [buffer_segment], es
@@ -21,15 +20,13 @@ api_openfile:
     mov es, ax
     mov dx, word [root_entries]
     mov di, 0x0500
-    pop si
     pop ds
     jmp openfile_loop
 .sub_dir:
     mov ax, dir_seg
     mov es, ax
     xor di, di
-    mov dx, [root_entries]
-    pop si
+    mov dx, [sub_entries]
     pop ds
 openfile_loop:
     mov cx, 11
@@ -42,16 +39,14 @@ openfile_loop:
     add di, 32
     dec dx
     jnz openfile_loop
-
     stc
     ret
 .done:
     mov ax, kernel_seg
     mov ds, ax
-    mov cx, [es:di+0x1c]
+
     mov di, [es:di+0x01a]
     mov [program_cluster], di
-    push cx
     mov ax, [buffer_adress]
     mov [program_dap+4], ax
     mov ax, [buffer_segment]
@@ -85,8 +80,6 @@ openfile_loop:
     cmp ax, 0xFFF8                              ;check if its the last cluster
     jb .loadfile
 
-    pop cx
-    xor si, si
     ;call copy_filebuffer
     clc
     ret

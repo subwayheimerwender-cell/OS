@@ -230,6 +230,7 @@ free_cluster:
 write_fat:
     pusha
     mov ax, [reserved_sectors]
+    add ax, [hidden_sectors]
     mov [file_dap+0x08], ax               ;LBA
     mov cx, [fat_size]
     mov [file_dap+2], cx                 ;size of FAT
@@ -303,8 +304,7 @@ write_disk:
     call cluster_to_sec
 
     mov [file_dap+0x08], ax
-    xor bx, bx
-    mov bl, [sec_per_cluster] 
+    movzx bx, byte [sec_per_cluster]
     mov [file_dap+0x02], bx       ;!!! need to calculate it dynamic
 
     mov [file_dap+4], si         ;offset
@@ -1024,7 +1024,7 @@ change_directory:
     cmp al, '-'
     je cd_parent_dir
 
-    cmp word [sub_dir], 0
+    cmp byte [sub_dir], 0
     jne .cd_subdir
     xor di, di
     mov es, di
@@ -1100,9 +1100,9 @@ load_dir:
     mov si, file_dap
     call read_sectors
 
-    mov cl, [sec_per_cluster]
-    mov ax, 512                                 ;standard size of cluster in FAT16
-    mul cl
+    movzx cx, byte [sec_per_cluster]
+    mov ax, 512
+    mul cx
     add [file_dap+4], ax                     ;add one cluster to the memory adress
     adc word [file_dap+6], 0                ;increase buffer for next cluster
     mov bx, [program_cluster]                   ;get the cluster-number
@@ -1110,9 +1110,9 @@ load_dir:
     xor dx, dx
     mov ds, dx
     mov ax, [ds:fat_offset+bx]                         ;read the value for the next cluster number
-    mov [program_cluster], ax                   ;save the value for next cluster
     mov dx, kernel_seg
     mov ds, dx
+    mov [program_cluster], ax
     cmp ax, 2
     jb invalid_cluster
     cmp ax, 0xfff8                              ;check if its the last cluster

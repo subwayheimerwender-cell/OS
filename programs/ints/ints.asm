@@ -75,12 +75,9 @@ int0x23:
     iret
 .openfile:
     pusha
-    push es
-    push ds
     call api_openfile
-    pop ds
-    pop es
     popa
+    mov cx, [es:di+0x1c]
     iret
 .api_write_file:
     pusha
