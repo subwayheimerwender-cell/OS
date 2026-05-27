@@ -697,7 +697,6 @@ copy_files2:
 
 .done:
     ret
-
 copy_files:
     mov ax, [ext_root_start]
     add ax, [root_size]
@@ -729,8 +728,12 @@ copy_files:
     cmp al, 0x00
     je .done
 
+    ; mov ax, [count]
+    ; mov bh, 0x01
+    ; int 0x27
+    ; inc word [count]
     mov ah, 0x0e
-    mov al, '/'
+    mov al, '#'
     mov bl, 0x0a
     int 0x10
 
@@ -781,10 +784,51 @@ copy_files:
     int 0x16
     retf
 .found_dot:
-    cmp word [es:di+0x1a], 0
+    ; mov ax, [es:di+0x1a]
+    ; mov [dot_entry], ax
+
+    push es
+    push di
+
+    mov ax, 0x8700
+    mov es, ax
+    mov di, 0x1a        ;first dot entry
+    ; mov ax, [es:di]
+    ; mov [src_dir_cluster], ax
+
+    mov ax, [dst_dir_cluster]
+    mov [es:di], ax
+
+    add di, 32  ;second dot entry
+    ; mov ax, [es:di]
+    ; mov [src_parent_cluster], ax
+    mov ax, [dst_parent_cluster]
+    mov [es:di], ax
+
+    pop di
+    pop es
+
+    mov ax, [dst_dir_cluster]
+    call ext_cluster_to_sec
+    mov [dap+8], ax
+    mov bh, 0x01
+    int 0x27
+    movzx ax, byte [ext_sec_per_cluster]
+    mov [dap+2], ax
+    mov word [dap+4], 0
+    mov word [dap+6], 0x8700
+    mov ah, 0x43
+    xor al, al
+    mov dl, [drive_number]
+    mov si, dap
+    int 0x13
+    jc error
+
+
+    cmp word [dst_parent_cluster], 0
     je .root
 
-    mov ax, [es:di+0x1a]
+    mov ax, [src_parent_cluster]
     call cluster_to_sec
     mov [dap+8], ax
     movzx ax, byte [sec_per_cluster]
@@ -799,7 +843,43 @@ copy_files:
 
     jmp .dir_back
 .root:
+    ; push es
+    ; push di
+
+    ; mov ax, 0x8700
+    ; mov es, ax
+    ; mov di, 0x1a        ;first dot entry
+    ; mov ax, [es:di]
+    ; mov [src_dir_cluster], ax
+    ; mov ax, [dst_dir_cluster]
+    ; mov [es:di], ax
+
+    ; add di, 32 ;second dot entry
+    ; mov ax, [es:di]
+    ; mov [src_parent_cluster], ax
+    ; mov ax, [dst_parent_cluster]
+    ; mov [es:di], ax
+
+    ; pop di
+    ; pop es
+
+
     mov [sub_dir], byte 0
+
+    ; mov ax, [dst_dir_cluster]
+    ; call ext_cluster_to_sec
+    ; mov [dap+8], ax
+    ; movzx ax, byte [ext_sec_per_cluster]
+    ; mov [dap+2], ax
+    ; mov word [dap+4], 0
+    ; mov word [dap+6], 0x8700
+    ; mov ah, 0x43
+    ; xor al, al
+    ; mov dl, [drive_number]
+    ; mov si, dap
+    ; int 0x13
+    ; jc error
+
     jmp .dir_back
 .end:
     ret
@@ -810,6 +890,37 @@ copy_files:
     push di
     push dx
 
+    push word [dst_dir_cluster]
+    push word [dst_parent_cluster]
+    push word [src_dir_cluster]
+    push word [src_parent_cluster]
+    push word [dot_entry]
+
+    mov ax, [dst_dir_cluster]
+    mov [dst_parent_cluster], ax
+
+    mov ax, [last_free_cluster]
+    mov [dst_dir_cluster], ax
+    cmp byte [sub_dir], 0
+    jne .not_root
+
+    mov word [dst_parent_cluster], 0
+    mov word [src_parent_cluster], 0
+    jmp .load_dir
+.not_root:
+    mov ax, [src_dir_cluster]
+    mov [src_parent_cluster], ax
+
+    ; push es
+    ; push di
+    ; mov ax, 0x8700
+    ; mov es, ax
+    ; xor di, di
+    mov ax, [es:di+0x1a]
+    mov [src_dir_cluster], ax
+    ; pop di
+    ; pop es
+.load_dir:
     mov ax, [es:di+0x1a]
     call cluster_to_sec
     mov [dap+8], ax
@@ -831,6 +942,13 @@ copy_files:
     jmp .search_loop
 
 .dir_back:
+    pop word [dot_entry]
+    pop word [src_parent_cluster]
+    pop word [src_dir_cluster]
+    pop word [dst_parent_cluster]
+    pop word [dst_dir_cluster]
+
+
     pop dx
     pop di
     pop es
@@ -999,9 +1117,12 @@ cluster_to_sec:
     ret
 
 ext_cluster_to_sec:
+    push cx
     sub ax, 2
     movzx cx, byte [ext_sec_per_cluster]
     mul cx
+    add ax, [ext_data_start]
+    pop cx
     ret
 
 
@@ -1093,6 +1214,11 @@ dot_dot_str: db '..         ', 0
 cluster: dw 0
 stack_pointer: dw 0
 fat_offset: dw 2
-last_cluster: dw 0
 next_cluster: dw 2
 last_free_cluster: dw 0
+dot_entry: dw 0
+src_dir_cluster: dw 0
+dst_dir_cluster: dw 0
+src_parent_cluster: dw 0
+dst_parent_cluster: dw 0
+count: dw 0
