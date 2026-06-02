@@ -34,7 +34,9 @@ printf "${GREEN}Succesfully compiled files!${RESET}\n"
 mkdosfs -F 16 -v disk.img
 dd if=boot.bin of=disk.img bs=1 count=450 seek=62 skip=62 conv=notrunc
 mcopy -i disk.img kernel/kernel.bin ::KERNEL.BIN
-# ./buildx.sh                                                                                            # UNCOMMENT FOR XMODE
+cd ~/Downloads/xmode
+./buildx.sh                                                                                            # UNCOMMENT FOR XMODE
+cd -
 # mcopy -i disk.img programs/help.bin ::HELP.BIN
 mcopy -i disk.img txt/ ::TXT
 mcopy -i disk.img zprograms/ ::PROGRAMS
@@ -46,13 +48,19 @@ printf "${MAGENTA}Disk layout:${RESET}\n"
 mdir -i disk.img ::
 # mdir -i floppy.img ::
 printf "${GREEN}Copied data to disk image. Loading QEMU...${RESET}\n"
-qemu-system-i386 -hda disk.img -hdb disk2.img -fda floppy.img -fdb floppy8.img -m 64M # -d int -no-reboot # -hdc disk3.img -device ahci 
-# qemu-system-i386 \
-#   -drive file=disk.img,format=raw,if=ide,index=0 \
-#   -boot c \
-#   -m 50M \
-  #-drive if=pflash,format=raw,file=/home/technodon/Downloads/xmode/build/OVMF_CODE.4m.fd \
-  #-drive if=pflash,format=raw,file=/home/technodon/Downloads/xmode/build/OVMF_VARS.4m.fd \
+#qemu-system-i386 -hda disk.img -hdb disk2.img -fda floppy.img -fdb floppy8.img -m 64M # -d int -no-reboot # -hdc disk3.img -device ahci 
+qemu-system-x86_64 \
+  -drive file=disk.img,format=raw,if=ide \
+  -drive file=disk4.img,format=raw,if=none,id=disk0 \
+  -drive file=disk2.img,format=raw,if=none,id=disk1 \
+  -drive file=disk3.img,format=raw,if=none,id=disk2 \
+  -device ahci,id=ahci0 \
+  -device ide-hd,drive=disk0,bus=ahci0.0 \
+  -device ide-hd,drive=disk1,bus=ahci0.1 \
+  -device ide-hd,drive=disk2,bus=ahci0.2 \
+  -m 50M \
+  -drive if=pflash,format=raw,readonly=on,file=/home/technodon/Downloads/xmode/build/OVMF_CODE.4m.fd \
+  -drive if=pflash,format=raw,file=/home/technodon/Downloads/xmode/build/OVMF_VARS.4m.fd \
 # mkdosfs -F 12 -v disk3.img
 # mkdosfs -F 16 -v disk2.img
 
