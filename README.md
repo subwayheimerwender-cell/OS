@@ -94,11 +94,12 @@ And in QEMU:<br>
 
 If you want to use the XMODE OS on top of Xiromos, do the following steps:
 ```bash
+cd ~/Downloads
 git clone https://github.com/xiromos/Xiromos
-git clone https://github.com/xiromos/XMODE
+git clone https://github.com/xiromos/xmode
 cd Xiromos
 chmod +x build.sh
-chmod +x buildx.sh
+chmod +x ~/Downloads/xmode/buildx.sh
 ./build.sh
 ```
 The scrip buildx.sh expects the directory xmode/ and xiromos/ in the download folder.<br>
